@@ -29,7 +29,6 @@ AI_park/
 
 ## Nguyên tắc chung
 
-- **Bí mật không vào repo.** Link camera (có user/pass) nằm trong `.env` của từng bài toán; repo chỉ có `.env.example` để biết cần điền gì.
 - **Video, ảnh, log không vào repo** (xem `.gitignore`): vừa nặng, vừa có thể lộ hình ảnh hiện trường.
 - Đọc camera bằng **ffmpeg, giải mã trên GPU (NVDEC)** để tiết kiệm CPU khi chạy nhiều camera.
 - Mỗi bài toán ghi rõ quyết định thiết kế **kèm lý do và số đo** trong `CONTEXT.md` của nó.
