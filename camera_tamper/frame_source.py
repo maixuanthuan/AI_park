@@ -17,7 +17,9 @@ import numpy as np
 
 log = logging.getLogger("tamper")
 
-_CRED = re.compile(r"//[^/@\s]+@")
+# Che tới dấu @ CUỐI CÙNG trước dấu / đầu tiên: mật khẩu dán nguyên văn có thể chứa @ (vd p@ss123).
+# Bản cũ dừng ở @ đầu tiên -> lộ phần sau (phát hiện 2026-10-15, khoá bằng test T11b).
+_CRED = re.compile(r"//[^/\s]*@")
 
 
 def mask(s):
