@@ -10,6 +10,8 @@ from collections import Counter
 import cv2
 import numpy as np
 
+HOLD = "_hold"  # frame nằm trong vùng đệm: vẫn tính là bất thường nhưng không bỏ phiếu nhãn
+
 
 class TamperDetector:
     DEFAULTS = dict(
@@ -148,17 +150,18 @@ class TamperDetector:
         self.metrics = dict(mean=round(mean, 1), obstruct=round(obstruct, 2),
                             edge_keep=round(edge_keep, 2), n_tex=n_tex, n_tex_abs=n_tex_abs)
 
-        # đang bất thường (chờ báo hoặc đã báo) -> dùng ngưỡng thoát lỏng hơn (hysteresis)
+        # Gán nhãn LUÔN theo ngưỡng vào. Vùng đệm (ngưỡng thoát lỏng hơn) chỉ GIỮ trạng thái bất thường,
+        # không bỏ phiếu nhãn. Bản cũ gán nhãn bằng ngưỡng thoát: xoay camera (obstruct 0.37 >= 0.35) bị xếp
+        # "obstructed" 179/180 phiếu và không bao giờ học lại (phát hiện 2026-10-15, khoá bằng test T5, T10).
         sticky = self.cand_abn or self.state is not None
-        obs_thr = c["exit_obstruct"] if sticky else c["obstruct_frac"]
-        edge_thr = c["exit_edge_keep"] if sticky else c["edge_keep_thr"]
-
         if self.same_since is not None and ts - self.same_since >= c["frozen_sec"]:
             raw = "frozen"
-        elif mean < c["dark_thr"] or mean > c["bright_thr"] or obstruct >= obs_thr:
+        elif mean < c["dark_thr"] or mean > c["bright_thr"] or obstruct >= c["obstruct_frac"]:
             raw = "obstructed"
-        elif edge_keep < edge_thr:
+        elif edge_keep < c["edge_keep_thr"]:
             raw = "scene_changed"
+        elif sticky and (obstruct >= c["exit_obstruct"] or edge_keep < c["exit_edge_keep"]):
+            raw = HOLD  # đang bất thường, chưa đủ sạch để thoát
         else:
             raw = None
         return self._debounce(raw, ts, gray, cell_var)
@@ -198,7 +201,7 @@ class TamperDetector:
         if abnormal != self.cand_abn:
             self.cand_abn, self.cand_since = abnormal, ts
             self.reasons.clear()
-        if abnormal:
+        if abnormal and raw != HOLD:
             self.reasons[raw] += 1
 
         event = None
