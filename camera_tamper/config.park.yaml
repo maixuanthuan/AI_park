@@ -1,0 +1,39 @@
+# Cấu hình mẫu cho công viên + test báo nhầm bằng video.
+# python run_tamper.py --config config.park.yaml --log-level INFO
+# Video bình thường (không có ai che camera) -> kết quả mong muốn: 0 cảnh báo.
+out_dir: tamper_events_park
+
+source:
+  hwaccel: true
+  out_width: 0
+  read_timeout: 10
+
+detector:
+  width: 320
+  grid: 8
+  osd_mask: []        # video có chữ / logo / đồng hồ cố định thì khai báo vùng đó ở đây
+  warmup_sec: 10
+  baseline_min_cells: 3 # camera nhìn hồ nước / bãi cỏ rộng thì đặt 0
+  hold_sec: 10        # công viên: che camera gắn cao 3-4m cần thời gian; 10s loại chim đậu, lá rụng, cành quét qua
+  clear_sec: 5
+  ref_alpha: 0.02
+  cell_tex_min: 30
+  cell_drop_ratio: 0.25
+  obstruct_frac: 0.6
+  dark_thr: 15        # khu không có đèn và camera không có IR -> đặt 0
+  bright_thr: 240
+  min_ref_edges: 300
+  edge_keep_thr: 0.35
+  exit_obstruct: 0.35
+  exit_edge_keep: 0.6
+  frozen_sec: 10
+  relearn_sec: 600
+
+cameras:
+  # đặt video vào thư mục videos/ trong project, mỗi video 1 mục
+  - id: park1
+    url: videos/park1.mp4
+    sample_fps: 2
+  # - id: park_02
+  #   url: videos/park_02.mp4
+  #   sample_fps: 2

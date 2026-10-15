@@ -1,0 +1,13 @@
+# Bí mật: link camera có user/pass
+.env
+# Dữ liệu lớn hoặc sinh ra khi chạy
+videos/
+tamper_events*/
+*.log
+*.mp4
+# Python
+__pycache__/
+*.pyc
+# Ảnh chụp, ảnh sự cố (có thể lộ hình ảnh hiện trường)
+*.png
+*.jpg

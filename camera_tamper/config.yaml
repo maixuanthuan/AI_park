@@ -1,0 +1,43 @@
+out_dir: tamper_events
+
+# đọc camera bằng ffmpeg, ghi đè được theo từng camera ở mục cameras[].source
+source:
+  hwaccel: true       # true = giải mã GPU (NVDEC), false = CPU (dự phòng)
+  out_width: 0        # 0 = giữ độ phân giải gốc; vd 960 -> GPU thu nhỏ trước khi đưa về
+  read_timeout: 10    # quá bao nhiêu giây không có frame thì kill ffmpeg, kết nối lại
+
+# tham số detector, ghi đè được theo từng camera ở mục cameras[].detector
+detector:
+  width: 320
+  grid: 8             # lưới 8x8: tách được vùng có chi tiết khỏi mảng trơn (tường, trời, cỏ)
+  osd_mask: []        # vùng bỏ qua, [[x1, y1, x2, y2], ...] theo tỉ lệ 0..1; đặt theo từng camera
+  warmup_sec: 10
+  baseline_min_cells: 3 # lúc học: frame phải có >= 3 ô có chi tiết, không thì báo baseline_invalid (0 = tắt, vd camera nhìn hồ nước)
+  hold_sec: 3         # văn phòng / demo: 3s cho phản ứng nhanh
+  clear_sec: 5
+  ref_alpha: 0.02
+  cell_tex_min: 30
+  cell_drop_ratio: 0.25
+  obstruct_frac: 0.6
+  dark_thr: 15        # đặt 0 nếu camera không có IR
+  bright_thr: 240
+  min_ref_edges: 300
+  edge_keep_thr: 0.35
+  exit_obstruct: 0.35   # đang bất thường: chỉ coi là hết khi obstruct < 0.35
+  exit_edge_keep: 0.6   # ... và edge_keep > 0.6
+  frozen_sec: 10
+  relearn_sec: 600
+
+cameras:
+  - id: cam_01
+    url_env: CAM_01_URL   # link thật nằm trong .env
+    sample_fps: 2
+    detector:
+      osd_mask: [[0.0, 0.0, 1.0, 0.07]]   # dải chữ đồng hồ trên cùng (7% chiều cao); xem khung cam trên --show để chỉnh
+
+  # test bằng file video thì khai báo url trực tiếp:
+  # - id: test_video
+  #   url: videos/tamper_test.mp4
+  #   sample_fps: 2
+  #   detector:
+  #     warmup_sec: 5
