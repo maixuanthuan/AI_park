@@ -8,6 +8,7 @@ tamper_events*/
 # Python
 __pycache__/
 *.pyc
+.pytest_cache/
 # Ảnh chụp, ảnh sự cố (có thể lộ hình ảnh hiện trường)
 *.png
 *.jpg

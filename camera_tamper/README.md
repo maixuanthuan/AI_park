@@ -24,6 +24,14 @@ Event in ra log (JSON), ảnh snapshot lưu ở `tamper_events/`.
 
 `--show`: hình camera ở trên, dải thông tin + ảnh gốc ở dưới. Lưới đỏ = ô mất chi tiết, xanh = bình thường, xám = ô trơn không xét, khung cam = vùng `osd_mask`.
 
+## Chạy test
+```bash
+pip install -r requirements-dev.txt   # lần đầu: cài pytest
+python -m pytest -q tests
+```
+Không cần camera, GPU hay ffmpeg: test tự dựng frame giả và tự truyền thời gian, chạy khoảng 20 giây.
+Mỗi test có 3 dòng mô tả: tình huống thật / phần giả lập / đỏ thì hỏng gì. Chạy sau **mọi** thay đổi code.
+
 ## Tham số chính cần tune
 - `obstruct_frac`, `cell_drop_ratio` — độ nhạy khi bị che
 - `edge_keep_thr` — độ nhạy khi bị xoay
