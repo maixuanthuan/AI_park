@@ -1,4 +1,5 @@
 out_dir: tamper_events
+stats_sec: 600         # mỗi 10 phút in 1 dòng thống kê (kể cả khi mọi số bằng 0): thấy đều = hệ còn sống
 
 # đọc camera bằng ffmpeg, ghi đè được theo từng camera ở mục cameras[].source
 source:

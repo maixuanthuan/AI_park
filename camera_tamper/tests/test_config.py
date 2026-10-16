@@ -47,6 +47,8 @@ CASES = [
     ("thiếu mục detector", _del(["detector", "clear_sec"]), "detector.clear_sec: thiếu"),
     ("thiếu mục source", _del(["source", "sample_fps"]), "source.sample_fps: thiếu"),
     ("thiếu cả mục lớn", _del(["source"]), "source: thiếu"),
+    ("thiếu stats_sec", _del(["stats_sec"]), "stats_sec: thiếu"),
+    ("stats_sec bằng 0", _set(["stats_sec"], 0), "stats_sec = 0: phải trong khoảng"),
     ("mục lạ (gõ nhầm)", _set(["detector", "hold_secs"], 10), "detector.hold_secs: tên mục không tồn tại"),
     ("mục lạ ở gốc", _set(["out_dirr"], "x"), "out_dirr: tên mục không tồn tại"),
     ("số viết thành chuỗi", _set(["detector", "hold_sec"], "10"), "detector.hold_sec = '10': phải là số"),

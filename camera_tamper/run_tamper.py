@@ -8,6 +8,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 import threading
 import time
@@ -40,7 +41,10 @@ SOURCE_PARAMS = {
     "sample_fps": ("num", 0, 30, False),      # số frame/giây đưa vào detector
     "reconnect_sec": ("num", 0, 300, False),  # mất kết nối thì chờ bao lâu rồi thử lại
 }
-TOP_KEYS = ("out_dir", "source", "detector", "cameras")
+TOP_PARAMS = {
+    "stats_sec": ("num", 0, 86400, False),  # mỗi bao nhiêu giây in 1 dòng thống kê (kể cả khi mọi số bằng 0)
+}
+TOP_KEYS = ("out_dir", "stats_sec", "source", "detector", "cameras")
 CAM_KEYS = ("id", "url", "url_env", "source", "detector")
 
 
@@ -56,6 +60,7 @@ def validate_config(cfg, check_env):
     errors += [f"{k}: thiếu" for k in TOP_KEYS if k not in cfg]
     if "out_dir" in cfg and not (isinstance(cfg["out_dir"], str) and cfg["out_dir"]):
         errors.append(f"out_dir = {cfg['out_dir']!r}: phải là đường dẫn thư mục")
+    errors += check_params(TOP_PARAMS, {k: cfg[k] for k in TOP_PARAMS if k in cfg}, "", partial=True)
     if "source" in cfg:
         errors += check_params(SOURCE_PARAMS, cfg["source"], "source")
     det_ok = "detector" in cfg and not tamper_detector.check_cfg(cfg["detector"])
@@ -154,7 +159,38 @@ def draw(frame, det, cam_id):
     return np.vstack([img, bar])
 
 
-def run_camera(cam, url, det_cfg, src_cfg, out_dir, stop, sources, latest, show):
+class Stats:
+    """Bộ đếm cho dòng thống kê định kỳ: các thread camera cộng vào, main đọc rồi xoá (theo từng khoảng)."""
+
+    def __init__(self, cam_ids):
+        self.lock = threading.Lock()
+        self.state = {c: "warmup" for c in cam_ids}
+        self.frames = self.alarms = self.lost = 0
+
+    def add(self, frames=0, alarms=0, lost=0):
+        with self.lock:
+            self.frames += frames
+            self.alarms += alarms
+            self.lost += lost
+
+    def set_state(self, cam_id, state):
+        self.state[cam_id] = state
+
+    def report(self, interval):
+        """Một dòng, in cả khi mọi số bằng 0: thấy dòng này đều đặn = hệ còn sống."""
+        with self.lock:
+            frames, alarms, lost = self.frames, self.alarms, self.lost
+            self.frames = self.alarms = self.lost = 0
+        n = len(self.state)
+        states = ", ".join(f"{k} {v}" for k, v in sorted(Counter(self.state.values()).items()))
+        return (f"thống kê {interval:g}s: {n} camera | {states} | {frames} frame "
+                f"({frames / interval / max(n, 1):.1f} fps/camera) | cảnh báo mới {alarms} | thử kết nối lại {lost}")
+
+
+_ADDR = re.compile(r"0x[0-9a-fA-F]+")
+
+
+def run_camera(cam, url, det_cfg, src_cfg, out_dir, stop, sources, latest, show, stats):
     cam_id = cam["id"]
     sc = {**src_cfg, **cam.get("source", {})}  # phần ghi đè theo camera là tuỳ chọn; bản chung đã đủ mục
     reconnect_sec = sc["reconnect_sec"]
@@ -164,12 +200,34 @@ def run_camera(cam, url, det_cfg, src_cfg, out_dir, stop, sources, latest, show)
     det = TamperDetector({**det_cfg, **cam.get("detector", {})})
     n_alarms = Counter()  # đếm cảnh báo theo loại, in tổng kết khi kết thúc
     finished, t0 = False, time.time()
+    down = None  # đang mất kết nối: {"since", "reason", "tries"}
+
+    def handle(ev, frame):
+        if ev:
+            emit({**ev, "cam_id": cam_id}, frame, out_dir)
+            if ev["event"] == "tamper_start":
+                n_alarms[ev["reason"]] += 1
+                stats.add(alarms=1)
+        stats.set_state(cam_id, "mất kết nối" if down else det.status())
+
+    def lost(reason):
+        # Mỗi sự cố 2 dòng: dòng "mất kết nối" khi bắt đầu (in lại chỉ khi LÝ DO đổi), dòng "có hình lại" khi hết.
+        # So lý do sau khi bỏ địa chỉ bộ nhớ (0x5bd7...): ffmpeg in địa chỉ khác nhau mỗi lần, không phải lý do mới.
+        nonlocal down
+        reason = reason or "stream kết thúc"
+        key = _ADDR.sub("0x", reason)
+        if down is None:
+            down = {"since": time.time(), "reason": None, "tries": 0}
+        down["tries"] += 1
+        stats.add(lost=1)
+        if key != down["reason"]:
+            log.warning("%s: mất kết nối: %s (thử lại mỗi %gs, chỉ báo lại khi lý do đổi)", cam_id, reason, reconnect_sec)
+            down["reason"] = key
+        handle(det.update_no_frame(time.time()), None)
 
     while not stop.is_set():
         if not src.open():
-            ev = det.update_no_frame(time.time())
-            if ev:
-                emit({**ev, "cam_id": cam_id}, None, out_dir)
+            lost(src.last_error)
             stop.wait(reconnect_sec)
             continue
 
@@ -177,11 +235,12 @@ def run_camera(cam, url, det_cfg, src_cfg, out_dir, stop, sources, latest, show)
             ok, frame = src.read()
             if not ok:
                 break
-            ev = det.update(frame, src.ts)
-            if ev:
-                emit({**ev, "cam_id": cam_id}, frame, out_dir)
-                if ev["event"] == "tamper_start":
-                    n_alarms[ev["reason"]] += 1
+            if down:
+                log.info("%s: có hình lại sau %.1f phút, đã thử %d lần", cam_id,
+                         (time.time() - down["since"]) / 60, down["tries"])
+                down = None
+            stats.add(frames=1)
+            handle(det.update(frame, src.ts), frame)
             log.debug("%s %.1f state=%s %s", cam_id, src.ts, det.status(), det.metrics)
             if show:
                 latest[cam_id] = draw(frame, det, cam_id)
@@ -189,27 +248,37 @@ def run_camera(cam, url, det_cfg, src_cfg, out_dir, stop, sources, latest, show)
 
         if stop.is_set():
             break
-        if src.is_file:
+        if src.is_file and src.last_error is None:
             finished = True
             break
-        log.info("%s: mất stream, thử lại sau %.0fs", cam_id, reconnect_sec)
-        ev = det.update_no_frame(time.time())
-        if ev:
-            emit({**ev, "cam_id": cam_id}, None, out_dir)
+        lost(src.last_error)
         stop.wait(reconnect_sec)
 
+    # trạng thái cuối cho dòng thống kê: camera này không còn chạy nữa
+    stats.set_state(cam_id, "hết video" if finished else "đã dừng")
     # tổng kết: luôn in, kể cả khi bấm q / Ctrl+C giữa chừng
     dur = src.ts if src.is_file else time.time() - t0
     log.info("%s: %s — đã chạy %.1f phút, %d cảnh báo %s", cam_id,
              "hết video" if finished else "dừng giữa chừng", dur / 60, sum(n_alarms.values()), dict(n_alarms))
 
 
-def main():
+def camera_thread(fatal, cam, *args):
+    """Lỗi code trong thread camera = hệ hỏng (không phải đầu vào xấu): in traceback, dừng TOÀN BỘ chương trình
+    với mã 1 để Docker khởi động lại và lỗi không bị che. Lỗi code thường đánh vào mọi camera như nhau."""
+    try:
+        run_camera(cam, *args)
+    except Exception:
+        log.exception("%s: lỗi code trong thread camera, dừng toàn bộ chương trình (mã 1)", cam["id"])
+        fatal.set()
+
+
+def main(argv=None):
+    """Trả về mã thoát: 0 = dừng bình thường, 1 = lỗi code (thread camera chết), 2 = config sai."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default=os.path.join(BASE_DIR, "config.yaml"))
     ap.add_argument("--log-level", default="INFO")
     ap.add_argument("--show", action="store_true", help="hiện cửa sổ live (chỉ dùng trên máy có màn hình)")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     logging.basicConfig(level=args.log_level, format="%(asctime)s %(levelname)s %(message)s")
     load_dotenv(os.path.join(BASE_DIR, ".env"))
@@ -218,27 +287,32 @@ def main():
             cfg = yaml.safe_load(f)
     except (OSError, yaml.YAMLError) as e:
         log.error("%s: không đọc được config: %s", args.config, e)
-        sys.exit(2)
+        return 2
 
     # config sai thì không khởi động: báo MỌI lỗi một lượt, trước khi mở camera nào
     errors = validate_config(cfg, check_env=True)
     if errors:
         log.error("%s: không khởi động, %d lỗi:\n  %s", args.config, len(errors), "\n  ".join(errors))
-        sys.exit(2)
+        return 2
 
     det_cfg = cfg["detector"]
     src_cfg = cfg["source"]
     out_dir = cfg["out_dir"]
-    stop = threading.Event()
+    stop, fatal = threading.Event(), threading.Event()
     sources, latest, shown = [], {}, {}
-    threads = [threading.Thread(target=run_camera, daemon=True,
-                                args=(cam, resolve_url(cam), det_cfg, src_cfg, out_dir, stop,
-                                      sources, latest, args.show))
+    stats = Stats([cam["id"] for cam in cfg["cameras"]])
+    threads = [threading.Thread(target=camera_thread, daemon=True,
+                                args=(fatal, cam, resolve_url(cam), det_cfg, src_cfg, out_dir, stop,
+                                      sources, latest, args.show, stats))
                for cam in cfg["cameras"]]
     for t in threads:
         t.start()
+    next_stats = time.time() + cfg["stats_sec"]
     try:
-        while any(t.is_alive() for t in threads):
+        while any(t.is_alive() for t in threads) and not fatal.is_set():
+            if time.time() >= next_stats:
+                log.info(stats.report(cfg["stats_sec"]))
+                next_stats += cfg["stats_sec"]
             if args.show:
                 for cam_id, vis in list(latest.items()):
                     if shown.get(cam_id) is not vis:  # chỉ vẽ khi có frame mới
@@ -247,7 +321,7 @@ def main():
                 if cv2.waitKey(30) & 0xFF == ord("q"):
                     break
             else:
-                time.sleep(0.5)
+                time.sleep(0.2)
     except KeyboardInterrupt:
         pass
     finally:
@@ -259,7 +333,8 @@ def main():
             t.join(timeout=5)
         if args.show:
             cv2.destroyAllWindows()
+    return 1 if fatal.is_set() else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

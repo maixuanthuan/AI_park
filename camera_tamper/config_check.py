@@ -15,14 +15,15 @@ def check_params(spec, cfg, prefix, partial=False):
     """partial=True: chỉ kiểm các mục có mặt (dùng cho phần ghi đè theo từng camera)."""
     if not isinstance(cfg, dict):
         return [f"{prefix}: phải là một nhóm mục (key: value)"]
-    errors = [f"{prefix}.{k}: tên mục không tồn tại (gõ nhầm? các mục hợp lệ: {', '.join(spec)})"
+    dot = f"{prefix}." if prefix else ""
+    errors = [f"{dot}{k}: tên mục không tồn tại (gõ nhầm? các mục hợp lệ: {', '.join(spec)})"
               for k in cfg if k not in spec]
     for k, (kind, lo, hi, lo_ok) in spec.items():
         if k not in cfg:
             if not partial:
-                errors.append(f"{prefix}.{k}: thiếu")
+                errors.append(f"{dot}{k}: thiếu")
             continue
-        v, name = cfg[k], f"{prefix}.{k} = {cfg[k]!r}"
+        v, name = cfg[k], f"{dot}{k} = {cfg[k]!r}"
         if kind == "bool":
             if not isinstance(v, bool):
                 errors.append(f"{name}: phải là true hoặc false")

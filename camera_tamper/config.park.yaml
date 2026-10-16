@@ -2,6 +2,7 @@
 # python run_tamper.py --config config.park.yaml --log-level INFO
 # Video bình thường (không có ai che camera) -> kết quả mong muốn: 0 cảnh báo.
 out_dir: tamper_events_park
+stats_sec: 600         # mỗi 10 phút in 1 dòng thống kê (kể cả khi mọi số bằng 0): thấy đều = hệ còn sống
 
 source:
   hwaccel: true

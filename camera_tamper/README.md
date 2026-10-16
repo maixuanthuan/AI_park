@@ -31,6 +31,23 @@ Event in ra log (JSON), ảnh snapshot lưu ở `tamper_events/`.
 
 `--show`: hình camera ở trên, dải thông tin + ảnh gốc ở dưới. Lưới đỏ = ô mất chi tiết, xanh = bình thường, xám = ô trơn không xét, khung cam = vùng `osd_mask`.
 
+## Đọc log
+Log là cho **người vận hành / người tiếp nhận** đọc (hệ có khoẻ không, hỏng ở đâu). Cảnh báo cho người quản lý đi theo
+đường **event** (dòng JSON `tamper_start` / `tamper_end`), sau này đẩy sang backend.
+
+| Dòng log | Nghĩa | Làm gì |
+|---|---|---|
+| `INFO thống kê 600s: 3 camera \| ok 2, mất kết nối 1 \| ... frame (2.0 fps/camera) \| cảnh báo mới 0 \| thử kết nối lại 0` | In đều mỗi `stats_sec`, **kể cả khi mọi số bằng 0** | Dòng này ngừng xuất hiện = chương trình treo. `fps/camera` tụt dưới `sample_fps` = camera / mạng chậm |
+| `INFO cam_x: hevc 1280x960 -> ... decode=gpu` | Đã kết nối được camera | `decode=cpu` khi `hwaccel: true` = ffmpeg không dùng được GPU |
+| `WARNING cam_x: mất kết nối: <lý do>` | Bắt đầu mất kết nối. Các lần thử lại sau **không in nữa**, trừ khi lý do đổi | Đọc lý do: `401` = sai mật khẩu, `404` = sai đường dẫn, `Connection refused` / timeout = mạng / camera tắt (**phía devops**) |
+| `INFO cam_x: có hình lại sau 12.3 phút, đã thử 144 lần` | Hết sự cố mất kết nối | Không cần làm gì |
+| `WARNING {"event": "tamper_start", ...}` | **Event**: camera bị phá / mất tín hiệu | Đây là cảnh báo nghiệp vụ, xem `reason` và ảnh trong `out_dir` |
+| `ERROR ...: không khởi động, N lỗi: ...` (mã thoát 2) | Config sai, chưa mở camera nào | Sửa đúng các mục được liệt kê (**phía người sửa config**) |
+| `ERROR cam_x: lỗi code trong thread camera ...` + traceback (mã thoát 1) | Lỗi code, cả chương trình dừng để Docker khởi động lại | Gửi traceback cho **dev** |
+| `INFO cam_x: hết video / dừng giữa chừng — đã chạy N phút, K cảnh báo {...}` | Tổng kết khi dừng | Số liệu báo cáo |
+
+Mã thoát: `0` dừng bình thường, `1` lỗi code, `2` config sai.
+
 ## Chạy test
 ```bash
 pip install -r requirements-dev.txt   # lần đầu: cài pytest

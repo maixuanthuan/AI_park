@@ -47,6 +47,12 @@ class FFmpegSource:
         self.frame_idx = 0
         self.ts = 0.0
         self.last_t = 0.0
+        # Lý do lần mở / đọc gần nhất thất bại (None = không lỗi). Nguồn đọc KHÔNG tự in log:
+        # runner quyết định in gì, in lúc nào (mỗi sự cố 2 dòng), xem run_tamper.run_camera.
+        self.last_error = None
+        self.closing = False      # mình chủ động tắt (Ctrl+C / dừng chương trình): ffmpeg chết là bình thường
+        self.timed_out = False    # watchdog đã tắt ffmpeg vì quá read_timeout không có frame
+        self._drain_t = None
 
     def _probe(self):
         cmd = ["ffprobe", "-v", "error"]
@@ -59,13 +65,14 @@ class FFmpegSource:
         return s["codec_name"], int(s["width"]), int(s["height"])
 
     def open(self):
+        self.last_error, self.closing, self.timed_out = None, False, False
         try:
             codec, w, h = self._probe()
         except subprocess.CalledProcessError as e:
-            log.info("%s: ffprobe lỗi: %s", self.name, _tail(e.stderr.decode(errors="replace").splitlines()))
+            self.last_error = "ffprobe: " + (_tail(e.stderr.decode(errors="replace").splitlines()) or f"mã {e.returncode}")
             return False
         except Exception as e:
-            log.info("%s: ffprobe lỗi: %s", self.name, type(e).__name__)
+            self.last_error = f"ffprobe: {type(e).__name__}: {mask(str(e))}"
             return False
 
         if self.out_width and self.out_width < w:
@@ -88,12 +95,7 @@ class FFmpegSource:
             vf.append(f"scale={ow}:{oh}")
         cmd += ["-i", self.url, "-an", "-vf", ",".join(vf), "-pix_fmt", "bgr24", "-f", "rawvideo", "-"]
 
-        self.err.clear()
-        self.proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                     stderr=subprocess.PIPE, start_new_session=True)
-        self.last_t = time.time()
-        threading.Thread(target=self._drain, args=(self.proc,), daemon=True).start()
-        threading.Thread(target=self._watchdog, args=(self.proc,), daemon=True).start()
+        self._spawn(cmd)
         log.info("%s: %s %dx%d -> %dx%d @%sfps, decode=%s", self.name, codec, w, h, ow, oh,
                  self.fps, "gpu" if self.hwaccel else "cpu")
         return True
@@ -105,8 +107,15 @@ class FFmpegSource:
         buf = proc.stdout.read(self.frame_bytes)
         if len(buf) < self.frame_bytes:
             proc.wait()
-            if self.err:
-                log.info("%s: ffmpeg dừng (code=%s): %s", self.name, proc.returncode, _tail(self.err))
+            if self._drain_t is not None:
+                self._drain_t.join(timeout=1)  # đợi đọc hết stderr, không thì câu lỗi bị cụt
+            if self.timed_out:
+                self.last_error = f"quá {self.read_timeout:g}s không có frame, đã tắt ffmpeg"
+            elif self.closing or proc.returncode == 0:
+                self.last_error = None  # mình chủ động tắt, hoặc hết video: không phải lỗi
+            else:
+                tail = _tail(self.err)
+                self.last_error = f"ffmpeg dừng (code={proc.returncode})" + (f": {tail}" if tail else "")
             return False, None
         self.last_t = time.time()
         self.frame_idx += 1
@@ -114,11 +123,21 @@ class FFmpegSource:
         return True, np.frombuffer(buf, np.uint8).reshape(self.oh, self.ow, 3).copy()
 
     def close(self):
+        self.closing = True
         proc, self.proc = self.proc, None
         if proc is not None:
             self._kill(proc)
 
     # ---------- internal ----------
+    def _spawn(self, cmd):
+        self.err.clear()
+        self.proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE, start_new_session=True)
+        self.last_t = time.time()
+        self._drain_t = threading.Thread(target=self._drain, args=(self.proc,), daemon=True)
+        self._drain_t.start()
+        threading.Thread(target=self._watchdog, args=(self.proc,), daemon=True).start()
+
     def _drain(self, proc):
         for line in proc.stderr:
             self.err.append(line.decode(errors="replace").rstrip())
@@ -127,7 +146,7 @@ class FFmpegSource:
         while proc.poll() is None:
             time.sleep(1.0)
             if time.time() - self.last_t > self.read_timeout:
-                log.info("%s: quá %.0fs không có frame, kill ffmpeg", self.name, self.read_timeout)
+                self.timed_out = True
                 self._kill(proc)
                 break
 

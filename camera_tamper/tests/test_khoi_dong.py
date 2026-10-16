@@ -40,7 +40,7 @@ def test_t14_go_nham_ten_muc_thi_khong_khoi_dong(tmp_path):
         cfg["detector"]["hold_secs"] = cfg["detector"].pop("hold_sec")
 
     code, out = run_with(tmp_path, mutate)
-    assert code != 0
+    assert code == 2, out  # 2 = config sai, chưa mở camera nào (1 = đã chạy rồi mới chết: sai)
     assert "hold_secs" in out and "hold_sec" in out
 
 
@@ -53,7 +53,7 @@ def test_t15_trung_id_camera_thi_khong_khoi_dong(tmp_path):
         cfg["cameras"].append({"id": "cam_a", "url": "cam.mp4"})
 
     code, out = run_with(tmp_path, mutate)
-    assert code != 0
+    assert code == 2, out  # 2 = config sai, chưa mở camera nào (1 = đã chạy rồi mới chết: sai)
     assert "cam_a" in out and "trùng" in out
 
 
@@ -68,6 +68,6 @@ def test_t16_nhieu_loi_thi_bao_du_mot_luot(tmp_path):
         cfg["detector"]["obstruct_frac"] = 60
 
     code, out = run_with(tmp_path, mutate)
-    assert code != 0
+    assert code == 2, out  # 2 = config sai, chưa mở camera nào (1 = đã chạy rồi mới chết: sai)
     for key in ("clear_sec", "hold_sec", "obstruct_frac"):
         assert f"detector.{key}" in out
