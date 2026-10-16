@@ -37,6 +37,7 @@ PARAMS = {
     "exit_edge_keep": ("num", 0, 1, True),       # ... và edge_keep > ngưỡng này (vùng đệm)
     "frozen_sec": ("num", 0, 3600, False),       # frame giống hệt nhau liên tục bao lâu -> frozen
     "relearn_sec": ("num", 0, 86400, True),      # scene_changed kéo dài bao lâu thì học lại cảnh mới (0 = tắt)
+    "recover_grace_sec": ("num", 0, 3600, True), # có hình lại sau mất tín hiệu: chưa báo sự cố mới, không học (0 = tắt)
 }
 
 
@@ -84,6 +85,8 @@ class TamperDetector:
         self.state_since = None
         self.metrics = {}
         self.cell_info = None      # (textured, dropped) theo lưới, chỉ dùng để vẽ debug
+        self.lost = False          # lần gọi trước là mất tín hiệu (update_no_frame)
+        self.grace_until = -1.0    # trước mốc này: camera đang khởi động lại / chỉnh hình
         self.mask = None           # True = pixel thuộc vùng osd_mask (tạo theo kích thước ảnh đã resize)
 
     def status(self):
@@ -136,6 +139,13 @@ class TamperDetector:
     # ---------- api ----------
     def update(self, frame, ts):
         c = self.cfg
+        # Camera vừa có hình lại sau mất tín hiệu: có thể vừa khởi động lại (PTZ xoay / zoom / lấy nét, chỉnh sáng).
+        # Trong recover_grace_sec: chưa báo sự cố mới và KHÔNG học ảnh gốc (giữ ảnh gốc cũ, để "rút dây, che, cắm lại"
+        # vẫn bị bắt khi hết thời gian chờ). no_signal vẫn kết thúc bình thường vì đã có hình.
+        if self.lost:
+            self.lost = False
+            self.grace_until = ts + c["recover_grace_sec"]
+        in_grace = ts < self.grace_until
         gray = self._prep(frame)
         self._build_mask(gray.shape)
 
@@ -189,10 +199,13 @@ class TamperDetector:
             raw = HOLD  # đang bất thường, chưa đủ sạch để thoát
         else:
             raw = None
+        if in_grace:
+            return self._debounce(None, ts, None, None)  # gray=None: không học ảnh gốc
         return self._debounce(raw, ts, gray, cell_var)
 
     def update_no_frame(self, ts):
         """Gọi khi mất stream / không mở được camera."""
+        self.lost = True
         self.last_hash = None
         self.same_since = None
         self.metrics = {}

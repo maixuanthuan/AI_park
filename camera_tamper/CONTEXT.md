@@ -1,141 +1,106 @@
-# CONTEXT — Bài toán: Phát hiện camera bị che / phá (camera_tamper)
+# CONTEXT — camera_tamper (phát hiện camera bị che / phá)
 
-> Tài liệu bối cảnh để mở phiên làm việc mới. Đọc hết trước khi đề xuất gì.
-> Cập nhật lần cuối: 2026-10-15.
+Cập nhật: 2026-10-16. Cách làm việc chung: `docs/CACH_LAM_VIEC.md` (Project "AI in town park").
 
-## 1. Bối cảnh dự án
+# PHẦN 1 — ĐỌC HẾT MỖI PHIÊN
 
-- Dự án **AI cho camera công viên** (tên thư mục dự kiến: `AI_park`). Gồm 7 bài toán:
-  1. Nhận diện & bóc tách biển số xe — **đã xong** (ngoài phạm vi tài liệu này)
-  2. Nhận diện khuôn mặt — **đã xong**
-  3. **Phát hiện camera bị che phủ — tài liệu này**
-  4. Nhận diện vật nuôi phóng uế
-  5. Đo đếm người, vật nuôi trong khuôn viên
-  6. Nhận diện đám đông, biểu tình / gây mất trật tự
-  7. Phát hiện lấn chiếm vỉa hè
-- Giai đoạn hiện tại: **chuẩn bị trước cho buổi đánh giá**, chưa có camera công viên. Test bằng camera văn phòng + video công viên tải từ YouTube.
-- Hệ thống AI chỉ **phát hiện & phát event**. Người quản lý xem **link camera gốc** (đầu ghi / VMS); backend nhận event để thông báo / hiển thị. `--show` chỉ để dev debug, không bao giờ lên dashboard.
+## Hệ là gì (một câu)
+Theo dõi từng camera, phát **event** khi camera bị che / làm mờ / xoay lệch / đóng băng hình / mất tín hiệu.
 
-## 2. Cách làm việc đã thống nhất
+- Bài toán 3/7 của dự án AI cho camera công viên (repo `AI_park`, GitHub public `maixuanthuan/AI_park`).
+- Chỉ dùng opencv + numpy (CPU) cho logic; đọc camera bằng ffmpeg giải mã trên GPU (NVDEC). Không có model.
+- **Event** (`tamper_start` / `tamper_end`, JSON) là cho người quản lý, sau này đẩy sang backend.
+  **Log vận hành** là cho dev / devops / người tiếp nhận. Hai luồng tách biệt; README mục "Đọc log".
+- Người quản lý xem hình bằng link camera gốc (đầu ghi / VMS). `--show` chỉ để dev debug.
 
-- Giao tiếp tiếng Việt, thẳng, thoải mái. **Thảo luận, chốt rồi mới code** — không lao vào code.
-- Giải thích bằng ngôn ngữ đời thường, có ví dụ; **mỗi lần 1 việc**, nói rõ làm để làm gì trước khi đưa lệnh.
-- Giải pháp **tối giản, tiết kiệm tài nguyên tối đa**, miễn đúng chức năng.
-- Claude **không chạy / deploy** trên máy của Thuan. Giao code dạng **zip + lệnh** để Thuan tự chạy:
-  ```bash
-  cd ~/PycharmProjects/camera_tamper
-  unzip -o ~/Downloads/camera_tamper.zip && rm ~/Downloads/camera_tamper.zip
-  ```
-  (zip chứa file ở gốc, không có thư mục con; không chứa `.env`.)
-- Thông tin nhạy cảm (link camera, user/pass) để trong `.env`, không vào code / git. Log tự che `user:pass`.
-- Chạy ngon trên máy local (robo) trước, sau đó mới lên server. Cuối cùng đóng **Docker**, chạy 1 lệnh.
-- Phân vai: **devops (sysadmin)** chỉ cung cấp link camera + xem log; **dev** chịu trách nhiệm logic. Sai link → lỗi devops; đúng link sai logic → lỗi dev.
+## Đang ở đâu
+- **Chạy được và đã kiểm** trên camera văn phòng (thật) và video công viên YouTube.
+- 57 test (`python -m pytest -q tests`, ~20s, không cần camera / GPU / ffmpeg). Mọi test có 3 dòng mô tả.
+- Mỗi chỗ kiểm quan trọng đã được thử "cài lỗi vào thì test có đỏ không" (2026-10-15/16): đều đỏ.
+- Config đủ mục, không mặc định ngầm; sai thì không khởi động, in mọi lỗi một lượt (mã thoát 2).
+- Bài toán coi như **xong giai đoạn chuẩn bị**; việc còn lại bên dưới không chặn sang bài khác.
 
-## 3. Môi trường
+## Phiên tới làm gì
+Chuyển sang bài toán tiếp theo (đếm người / vật nuôi). Việc còn lại của bài này: xem cuối file.
 
-- Máy dev **robo**: Ubuntu, GPU **RTX A3000 Laptop** (driver 535), conda env `deepcv`.
-  - ffmpeg hệ thống `/bin/ffmpeg` **4.4.2** (Ubuntu 22.04), có `-hwaccel cuda`, `h264_cuvid`, `hevc_cuvid`.
-  - Cảnh báo `libncursesw.so.6: no version information available` khi gọi ffmpeg trong env deepcv: **vô hại**, bỏ qua.
-- Server: **V100**, Ubuntu 22.04, Docker Compose. Lưu ý Docker cần `NVIDIA_DRIVER_CAPABILITIES=compute,utility,video` (thiếu `video` → không có NVDEC).
-- Camera test văn phòng (`cam_01`): **HEVC 1280x960 @30fps**, có **OSD đồng hồ** ở dải trên cùng.
+## Nguyên tắc riêng của bài này
+- **Không bao giờ học lại ảnh gốc khi vừa có hình lại / đang bất thường**: kẻ phá có thể rút dây, che, cắm lại.
+- Gán nhãn sự cố luôn theo **ngưỡng vào**; vùng đệm (ngưỡng thoát) chỉ để **giữ** trạng thái bất thường.
+- Mọi con số trong config có comment: đo gì, ngày nào, cỡ mẫu. Con số chưa đo thì ghi rõ là chưa đo.
 
-## 4. Cấu trúc project `~/PycharmProjects/camera_tamper`
+---
 
+# PHẦN 2 — TRA KHI CẦN
+
+## Cấu trúc
 | File | Vai trò |
 |---|---|
-| `tamper_detector.py` | Lõi detector, không IO: `update(frame, ts)` → event \| None; `update_no_frame(ts)`; `status()` |
-| `frame_source.py` | `FFmpegSource`: đọc RTSP / file bằng ffmpeg subprocess, GPU (NVDEC) hoặc CPU; ffprobe tự dò codec + kích thước; watchdog; drain stderr; che user:pass trong log |
-| `run_tamper.py` | Runner đa camera (1 thread / camera), `--show`, `--log-level`, tổng kết khi kết thúc |
-| `config.yaml` | Văn phòng / demo: `hold_sec: 3`, cam_01 có `osd_mask` |
-| `config.park.yaml` | Công viên / test video: `hold_sec: 10`, camera là file trong `videos/` |
-| `.env` / `.env.example` | `CAM_01_URL=rtsp://...` |
-| `CONTEXT.md` | Tài liệu này |
+| `tamper_detector.py` | Lõi, không IO: `update(frame, ts)` / `update_no_frame(ts)` -> event \| None. Bảng `PARAMS` + `check_cfg` |
+| `frame_source.py` | `FFmpegSource`: ffprobe dò codec, ffmpeg (GPU/CPU) qua pipe, watchdog, `last_error`; **không tự in log** |
+| `run_tamper.py` | Runner: kiểm config, 1 thread / camera, log vận hành, thống kê định kỳ, `--show`. Mã thoát 0/1/2 |
+| `config_check.py` | Kiểm 1 mục config theo bảng: đủ, không mục lạ, đúng kiểu, trong khoảng |
+| `config.yaml` / `config.park.yaml` | Văn phòng (`hold_sec` 3) / công viên + test video (`hold_sec` 10) |
+| `tests/` | `fake_camera.py` (camera giả), test detector / config / khởi động / log |
 
-Chạy:
-```bash
-python run_tamper.py --log-level DEBUG --show 2>&1 | tee test_$(date +%H%M).log      # camera thật
-python run_tamper.py --config config.park.yaml 2>&1 | tee park_$(date +%H%M).log       # video công viên
-```
+## Thuật toán
+- ffmpeg giảm còn `sample_fps` (2) **ngay trên GPU** (filter `fps` đứng trước `hwdownload`), Python thu về rộng 320, xám.
+- **Lưới 8x8**, mỗi ô độ chi tiết = variance Laplacian. Ô trơn trong ảnh gốc (`< cell_tex_min`) không xét.
+  `obstruct` = tỉ lệ ô mất chi tiết (`< ref * cell_drop_ratio`). Vật che sát ống kính luôn nhòe -> mất chi tiết, bất kể màu.
+- `edge_keep` = tỉ lệ cạnh Canny của ảnh gốc còn khớp -> `scene_changed` (xoay, vật rõ nét chắn trước).
+- `mean` quá tối / quá chói -> `obstructed`. Hash frame (bỏ vùng `osd_mask`) giống hệt `frozen_sec` -> `frozen`.
+- **Bộ đếm thời gian chung** cho mọi loại bất thường: đủ `hold_sec` thì báo loại nhiều phiếu nhất; hết sau `clear_sec`.
+- **Ảnh gốc**: học `warmup_sec` lúc đầu, chỉ từ frame đủ chi tiết (`baseline_min_cells`, `min_ref_edges`), không đạt
+  thì báo `baseline_invalid` và chờ (bắt "che trước rồi mới bật"). Sau đó cập nhật chậm (`ref_alpha`) **chỉ khi bình thường**.
+- `scene_changed` kéo dài `relearn_sec` -> chấp nhận cảnh mới (event `relearn`).
+- Có hình lại sau mất tín hiệu -> `recover_grace_sec` không báo sự cố mới, không học ảnh gốc (camera khởi động lại).
+- `osd_mask` **bắt buộc** với camera có chữ đồng hồ: không mask thì chữ trên nền vật che bị coi là "chi tiết" -> học nhầm.
 
-## 5. Thuật toán (không dùng model, chỉ opencv + numpy, CPU)
+## Số đo (ngày, nguồn, cỡ mẫu)
+| Số đo | Giá trị | Nguồn |
+|---|---|---|
+| Báo nhầm, camera văn phòng thật | 0 / 45 phút | 2026-10-16 09:34–10:19, giờ làm việc, có người qua lại |
+| Báo nhầm, video công viên `park1` | 0 / 120 phút | YouTube 1080p, cây + người, chạy lại sau mỗi lần sửa |
+| Bắt phá hoại giả `park1_tamper` | 3 / 3, đúng thời điểm + `hold_sec` | 15 phút đầu park1 + che kín / che 75% / làm mờ (ffmpeg) |
+| Độ trễ báo `no_signal` khi rút dây | ~26s | 1 lần, camera văn phòng (gồm `read_timeout` 10s + ffprobe 10s) |
+| Camera PTZ ổn định sau khi khởi động lại | ~25s | 1 lần (rút dây PoE) -> `recover_grace_sec` 60. **Mẫu nhỏ** |
+| CPU | python ~4%, ffmpeg ~3% / camera | 1 camera văn phòng; NVDEC ~1%. Video 1080p chạy ~22x thời gian thực |
 
-**Ý tưởng:** như người bảo vệ — nhớ cảnh bình thường (ảnh gốc), rồi liên tục so sánh.
+## Quyết định và lý do
+- Đọc camera **chỉ bằng ffmpeg**, `hwaccel: false` để dự phòng CPU. Lý do: nhiều camera thì giải mã CPU nghẽn trước.
+- `cv2.setNumThreads(1)` + `OMP_NUM_THREADS=1`: thread pool OpenCV spin-wait ăn ~1000% CPU với ảnh nhỏ (đo 2026-10-15).
+- Snapshot độ phân giải gốc (`out_width: 0`). `--show` 2 fps là đủ, không làm hiển thị mượt (tốn tài nguyên).
+- Lưới 8x8 (4x4 bỏ sót vùng chi tiết lẫn trong mảng trơn; 32x32 ô quá nhỏ, nhiễu).
+- `hold_sec` 3 cho demo, 10 cho công viên (camera gắn cao, loại chim đậu / lá rụng). **Chưa đo trên camera công viên.**
+- Lớp kiểm ảnh gốc chỉ chạy lúc học, không chạy khi vận hành (cảnh trơn tự nhiên như đêm, hồ nước sẽ báo nhầm).
+- Lỗi code trong thread camera -> dừng toàn bộ, mã 1 (lỗi code thường đánh mọi camera; để Docker khởi động lại).
+- Thống kê định kỳ `stats_sec` 600, in cả khi bằng 0 (phân biệt "không có gì" với "treo").
+- Mất kết nối: mỗi lý do in 1 lần / sự cố (lý do đổi qua lại khi camera khởi động lại: đo 4 dòng / 1 lần rút dây).
 
-- **Tiền xử lý**: ffmpeg giảm còn **2 fps** ngay trên GPU → Python resize về rộng 320px, xám, GaussianBlur 3x3.
-- **Lưới 8x8**, mỗi ô tính **độ chi tiết** = variance của Laplacian.
-  - Ô có chi tiết trong ảnh gốc (`>= cell_tex_min`) mới được theo dõi; ô trơn (tường, trời, cỏ) bị bỏ qua (xám trên `--show`).
-  - Ô "mất chi tiết" nếu var < ref × `cell_drop_ratio`. **`obstruct`** = tỉ lệ ô mất chi tiết / ô được theo dõi.
-  - Vì sao hiệu quả với **mọi vật che** (bất kể màu): vật sát ống kính luôn **nhòe** (ngoài tầm lấy nét) → mất chi tiết.
-- **`edge_keep`**: tỉ lệ cạnh Canny của ảnh gốc còn khớp với frame hiện tại (dilate 5x5). Bắt **cảnh bị thay đổi** (xoay camera, vật rõ nét đặt trước camera).
-  - Ảnh gốc là trung bình theo thời gian → cạnh lá cây đung đưa bị nhòe, cạnh vật cố định (ghế, cột, khung tập) được giữ → tự ưu tiên "mỏ neo" cố định.
-- **`mean`**: quá tối (`< dark_thr`) / quá chói (`> bright_thr`) → obstructed.
-- **frozen**: hash md5 frame (đã bỏ vùng OSD) giống hệt liên tục `frozen_sec`.
-- **no_signal**: không mở được / mất stream.
+## Đã thử và bỏ
+- Học lại ảnh gốc khi có hình lại: bỏ, mở đường "rút dây, che, cắm lại".
+- Ép học ảnh gốc sau timeout khi cảnh trơn: bỏ, học từ cảnh trơn thì vẫn mù.
+- Test tranh thời gian bằng "in nhiều rồi chạy nhiều lần": không bao giờ lộ lỗi; thay bằng dựng chắc chắn tình huống.
 
-**Các loại sự cố (reason):** `obstructed`, `scene_changed` (trước đây tên `moved`, đã đổi cho đúng nghĩa), `frozen`, `no_signal`, `baseline_invalid`.
+## Giới hạn đã biết
+- Che dưới ~60% khung hình không báo (chủ đích, chỉnh `obstruct_frac`).
+- Che dần qua nhiều ngày (cây mọc, bụi bám) không báo: ảnh gốc học theo (chủ đích, thuộc bảo trì).
+- Chưa thử: chạng vạng / chuyển IR, ban đêm, gió to, mưa, mạng nhện, nhiều camera cùng lúc trên server.
+- Sau `recover_grace_sec`, sự cố có từ lúc mất tín hiệu mới được báo (chậm thêm tối đa 60s).
 
-**Chống báo nhầm:**
-- **Đếm thời gian chung cho mọi loại bất thường** (debounce), đủ `hold_sec` mới báo; báo loại xuất hiện nhiều nhất. Lý do: khi che, obstruct dao động quanh ngưỡng, loại nhảy obstructed ↔ moved làm reset bộ đếm → trước đây không bao giờ báo.
-- **Hysteresis**: vào báo động khi obstruct ≥ 0.6 hoặc edge_keep < 0.35; chỉ thoát khi obstruct < 0.35 **và** edge_keep > 0.6.
-- Hết báo động sau `clear_sec` (5s) bình thường liên tục.
+## Môi trường
+- Dev **robo**: RTX A3000 Laptop, driver 535, conda `deepcv`, ffmpeg hệ thống 4.4.2 (có cuvid).
+  Cảnh báo `libtinfo / libncursesw: no version information` khi ở deepcv: vô hại, do `LD_LIBRARY_PATH` của conda.
+  Git push trong deepcv: đã đặt `core.sshCommand = env -u LD_LIBRARY_PATH ssh`.
+- Server: V100, Ubuntu 22.04, Docker Compose; container cần `NVIDIA_DRIVER_CAPABILITIES=compute,utility,video`.
+- Camera văn phòng `cam_01`: PTZ, HEVC 1280x960 @30, PoE, có OSD đồng hồ (dải 7% trên cùng).
 
-**Ảnh gốc:**
-- **Warmup** 10s lúc khởi động (chỉ học, không báo). Log / `--show` hiện `state=warmup`.
-- **Lớp 1 (chỉ chạy lúc warmup)**: frame phải có ≥ `baseline_min_cells` (3) ô có chi tiết và ≥ `min_ref_edges` (300) cạnh mới được học. Không đạt → chờ, báo `baseline_invalid`, khi cảnh hợp lệ thì tự học và báo hết. Giải quyết tình huống **"che camera trước rồi mới bật hệ thống"** (khách hay test). Lúc vận hành bình thường **không chạy** lớp này (tránh báo nhầm với cảnh trơn: đêm tối, hồ nước, sương). `baseline_min_cells: 0` để tắt cho camera vốn nhìn cảnh trơn.
-- Sau warmup, ảnh gốc **cập nhật rất chậm (EMA `ref_alpha` 0.02)**, **chỉ khi bình thường** → thích nghi ánh sáng, không học nhầm cảnh bị che.
-- `scene_changed` kéo dài `relearn_sec` (600s) → chấp nhận cảnh mới, phát event `relearn`.
-
-**`osd_mask`** (theo từng camera, tỉ lệ 0..1 `[x1,y1,x2,y2]`): bỏ vùng chữ đồng hồ khỏi hash / độ chi tiết / cạnh.
-**BẮT BUỘC với camera có OSD**: giả lập cho thấy không có mask thì chữ đồng hồ trên nền vật che bị coi là "chi tiết" → học nhầm cảnh bị che, không báo gì (cả baseline_invalid lẫn frozen).
-
-**Event (JSON, in ra log WARNING, ảnh JPG lưu `out_dir`):**
-```json
-{"event": "tamper_start|tamper_end|relearn", "reason": "obstructed", "prev": null, "ts": 310.5,
- "metrics": {"mean": 175.0, "obstruct": 1.0, "edge_keep": 0.0, "n_tex": 62, "n_tex_abs": 0}, "cam_id": "park1_tamper"}
-```
-
-## 6. Hiệu năng — bài học áp dụng cho mọi bài toán sau
-
-- **`cv2.setNumThreads(1)` + `OMP_NUM_THREADS=1`**: thread pool OpenCV mặc định spin-wait ăn ~1000% CPU (10 core) dù việc thật rất nhỏ. Sau sửa: python ~4% / camera.
-- **ffmpeg filter: `fps` đặt TRƯỚC `hwdownload`** → chỉ chép 2 frame/s từ GPU về CPU.
-- Giải mã GPU (NVDEC) là chip riêng, không ăn CUDA core của YOLO. 1 camera ≈ 1% NVDEC, ffmpeg ~3% CPU.
-- `--show` chỉ vẽ khi có frame mới.
-- Một camera < 10% của 1 core. Video 1080p 2 tiếng xử lý xong trong ~5.5 phút (~22x realtime).
-- Đọc file video: detector dùng **thời gian của video** (frame_idx / fps), tốc độ chạy không ảnh hưởng kết quả.
-
-## 7. Kết quả test
-
-- **Camera văn phòng** (che bằng bìa trắng, người đi qua): ô chuyển đỏ đúng; sau khi sửa debounce + hysteresis, replay log cho kết quả báo đúng lúc che, không báo khi người đi qua.
-- **Video công viên `park1`** (2 giờ, 1080p, không có phá hoại): **0 cảnh báo**.
-- **`park1_tamper`** (15 phút đầu park1 + 3 sự cố giả bằng ffmpeg drawbox / boxblur): **bắt đủ 3/3**, đúng thời điểm (+10s), đúng loại `obstructed`:
-  - che kín (5:00–5:30) → báo 5:10; che 75% (7:30–8:00) → báo 7:40; làm mờ toàn bộ (10:00–10:30) → báo 10:10.
-- Cơ chế kết nối lại hoạt động (file chưa tạo xong → no_signal → tự đọc lại khi file sẵn sàng).
-
-## 8. Các quyết định đã chốt (và lý do)
-
-- Đọc camera **chỉ bằng ffmpeg** (bỏ cv2.VideoCapture), giữ cờ `hwaccel: false` làm dự phòng CPU.
-- Snapshot ở **độ phân giải gốc** (`out_width: 0`).
-- **Không làm `show_fps`** (hiển thị mượt) — `--show` chỉ để debug, 2fps là đủ.
-- **Không "ép học" ảnh gốc** sau timeout: học từ cảnh trơn thì vẫn mù → chờ + báo `baseline_invalid` sạch hơn.
-- **Lưới 8x8** (cân bằng giữa vùng mù và độ ổn định; 32x32 quá nhỏ, nhiễu).
-- `hold_sec`: **3s** cho văn phòng / demo, **10s** cho công viên (camera gắn cao, loại chim đậu / lá rụng).
-- Không ghi log ra file trong code: local dùng `tee`, Docker dùng `docker compose logs`.
-
-## 9. Giới hạn đã biết
-
-- Che dưới 60% khung hình → không báo (chủ đích, chỉnh `obstruct_frac`).
-- Vật che xuất hiện **dần dần qua nhiều ngày** (cây mọc, bụi bám) → ảnh gốc học theo, không báo (chủ đích, thuộc bảo trì).
-- Chưa test: **chạng vạng / chuyển IR**, ban đêm, gió to, mưa, mạng nhện; chưa test rút dây mạng camera thật.
-- Mất tín hiệu lâu (vd chiều → tối) → khi có hình lại, ánh sáng khác ảnh gốc, có thể báo nhầm.
-
-## 10. Việc còn lại (backlog, chưa làm)
-
-1. Tổng kết in thêm **biên an toàn**: edge_keep thấp nhất / obstruct cao nhất lúc bình thường.
-2. Bỏ dòng log thừa `ffmpeg dừng (code=0):` khi hết video bình thường.
-3. **Ảnh "trước"** làm bằng chứng: giữ 1 frame bình thường cuối cùng (không buffer nhiều frame — tốn RAM).
-4. Mất tín hiệu quá X phút → học lại ảnh gốc từ đầu.
-5. Đóng gói cho devops: `cameras.yaml` (cam_id **UUID** + url, devops quản lý, gitignore), `--check` in bảng OK/LỖI (401 sai mật khẩu, 404 sai đường dẫn, timeout), **Lớp 2: ảnh gốc chuẩn chốt lúc lắp đặt** (lưu file, so khung cạnh khi khởi động), Docker 1 lệnh.
-6. Hàm `load_cameras()` để sau này lấy danh sách camera từ **API backend**.
-7. Chốt **"hợp đồng" format event** + kênh gửi (Kafka hay HTTP) với team backend.
-8. Kiểm tra mở rộng: VRAM mỗi tiến trình ffmpeg (mỗi cái 1 CUDA context ~100–300MB), giới hạn kết nối RTSP của camera / đầu ghi.
-9. Về lâu dài: các bài toán dùng chung **1 lớp đọc camera** (giải mã 1 lần, chia frame) thay vì mỗi bài kéo stream riêng.
+## Việc còn lại (theo thứ tự)
+1. Đo lại `recover_grace_sec` (3 lần rút dây, log DEBUG; và trên camera công viên khi có).
+2. Lệnh kiểm hồi quy bằng video có ghi sẵn kết quả mong đợi (park1: 0, park1_tamper: 3) + cách tạo `park1_tamper.mp4`.
+3. Đo biên an toàn các ngưỡng (edge_keep thấp nhất / obstruct cao nhất lúc bình thường), rồi khoá ngưỡng đã đo bằng test.
+4. Thử chạng vạng / IR, ban đêm trên camera thật.
+5. Đóng gói cho devops: `cameras.yaml` (cam_id UUID + url), `--check` (bảng OK / LỖI), ảnh gốc chuẩn chốt lúc lắp đặt, Docker 1 lệnh.
+6. Chốt hợp đồng event với backend (trường, kênh Kafka / HTTP, phiên bản).
+7. Ảnh "trước" làm bằng chứng (1 frame bình thường cuối cùng).
+8. Điều tra `LD_LIBRARY_PATH` của deepcv (gốc của cảnh báo libtinfo và lỗi ssh).
+9. Về lâu dài: một lớp đọc camera dùng chung cho mọi bài toán (giải mã 1 lần, chia frame).

@@ -30,6 +30,9 @@ detector:
   exit_edge_keep: 0.6   # ... và edge_keep > 0.6
   frozen_sec: 10
   relearn_sec: 600
+  recover_grace_sec: 60  # có hình lại sau mất tín hiệu: chờ bấy nhiêu giây mới báo sự cố mới (camera khởi động lại).
+                         # Đo 1 lần 2026-10-16, PTZ văn phòng rút dây PoE: hình ổn định sau ~25s -> chọn 60 (biên ~2.4x).
+                         # MẪU NHỎ, cần đo lại trên camera công viên. 0 = tắt.
 
 cameras:
   - id: cam_01

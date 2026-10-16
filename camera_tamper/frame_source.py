@@ -68,6 +68,9 @@ class FFmpegSource:
         self.last_error, self.closing, self.timed_out = None, False, False
         try:
             codec, w, h = self._probe()
+        except subprocess.TimeoutExpired:
+            self.last_error = f"ffprobe: quá {self.read_timeout:g}s không phản hồi"
+            return False
         except subprocess.CalledProcessError as e:
             self.last_error = "ffprobe: " + (_tail(e.stderr.decode(errors="replace").splitlines()) or f"mã {e.returncode}")
             return False

@@ -39,7 +39,7 @@ Log là cho **người vận hành / người tiếp nhận** đọc (hệ có k
 |---|---|---|
 | `INFO thống kê 600s: 3 camera \| ok 2, mất kết nối 1 \| ... frame (2.0 fps/camera) \| cảnh báo mới 0 \| thử kết nối lại 0` | In đều mỗi `stats_sec`, **kể cả khi mọi số bằng 0** | Dòng này ngừng xuất hiện = chương trình treo. `fps/camera` tụt dưới `sample_fps` = camera / mạng chậm |
 | `INFO cam_x: hevc 1280x960 -> ... decode=gpu` | Đã kết nối được camera | `decode=cpu` khi `hwaccel: true` = ffmpeg không dùng được GPU |
-| `WARNING cam_x: mất kết nối: <lý do>` | Bắt đầu mất kết nối. Các lần thử lại sau **không in nữa**, trừ khi lý do đổi | Đọc lý do: `401` = sai mật khẩu, `404` = sai đường dẫn, `Connection refused` / timeout = mạng / camera tắt (**phía devops**) |
+| `WARNING cam_x: mất kết nối: <lý do>` | Bắt đầu mất kết nối. Các lần thử lại sau **không in nữa**, trừ khi gặp **lý do mới** (mỗi lý do in 1 lần / sự cố) | Đọc lý do: `401` = sai mật khẩu, `404` = sai đường dẫn, `Connection refused` / timeout = mạng / camera tắt (**phía devops**) |
 | `INFO cam_x: có hình lại sau 12.3 phút, đã thử 144 lần` | Hết sự cố mất kết nối | Không cần làm gì |
 | `WARNING {"event": "tamper_start", ...}` | **Event**: camera bị phá / mất tín hiệu | Đây là cảnh báo nghiệp vụ, xem `reason` và ảnh trong `out_dir` |
 | `ERROR ...: không khởi động, N lỗi: ...` (mã thoát 2) | Config sai, chưa mở camera nào | Sửa đúng các mục được liệt kê (**phía người sửa config**) |
@@ -61,6 +61,8 @@ Mỗi test có 3 dòng mô tả: tình huống thật / phần giả lập / đ�
 - `edge_keep_thr` — độ nhạy khi bị xoay
 - `hold_sec` — nhanh vs ít báo nhầm
 - `baseline_min_cells` — kiểm tra lúc học ảnh gốc; đặt 0 cho camera vốn nhìn cảnh trơn (hồ nước, bãi cỏ rộng)
+- `recover_grace_sec` — có hình lại sau mất tín hiệu: chờ camera khởi động lại xong (PTZ xoay, lấy nét) mới báo sự cố mới;
+  trong lúc chờ không học ảnh gốc, nên "rút dây, che, cắm lại" vẫn bị bắt khi hết thời gian chờ
 - `grid` — đang dùng 8x8
 - `osd_mask` — vùng chữ đồng hồ / logo cố định cần bỏ qua, theo từng camera (khung màu cam trên `--show`)
 

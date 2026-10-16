@@ -180,3 +180,47 @@ def test_t10_xoay_lau_khong_ai_chinh_thi_hoc_lai(cfg):
     ev = watch(det, lambda t: noisy(moved, rng), 100, 30)
     assert ev == []
     assert det.status() == "ok"
+
+
+def lose_signal(det, start, seconds):
+    """Mất tín hiệu: runner gọi update_no_frame mỗi 5s khi thử kết nối lại."""
+    events = []
+    for t in range(start, start + seconds, 5):
+        e = det.update_no_frame(t)
+        if e:
+            events.append(e)
+    return events
+
+
+def test_t27_camera_khoi_dong_lai_khong_bao_nham(cfg):
+    """Tình huống thật: mất điện (camera PoE), camera khởi động lại, PTZ xoay / zoom / lấy nét rồi mới đứng yên
+    (gặp thật 2026-10-16: báo nhầm "obstructed" 14s, 15s sau khi có hình lại).
+    Giả lập: đúng thứ tự trong log thật: mất tín hiệu 30s, có hình lại bình thường 8s (hết no_signal),
+    rồi 20s PTZ xoay / lấy nét (hình lệch, nhòe xen kẽ), rồi đứng yên ở cảnh cũ.
+    Đỏ thì hỏng gì: mỗi lần mất điện là một loạt báo nhầm; nếu lỡ học ảnh gốc lúc đang chỉnh hình thì sau đó báo nhầm tiếp.
+    """
+    c, det, rng, s = setup(cfg)
+    assert kinds(lose_signal(det, 20, 30)) == [("tamper_start", "no_signal")]
+
+    settling = [shifted(s), covered(120)]
+    ref_before = det.ref_gray.copy()
+    ev = watch(det, lambda t: noisy(s, rng), 50, 8)
+    ev += watch(det, lambda t: noisy(settling[int(t) % 2], rng), 58, 20)
+    assert 78 < 50 + c["recover_grace_sec"]  # vẫn đang trong thời gian chờ
+    assert np.array_equal(det.ref_gray, ref_before)  # không học ảnh gốc lúc camera đang xoay / chỉnh hình
+    ev += watch(det, lambda t: noisy(s, rng), 78, 120)
+    assert kinds(ev) == [("tamper_end", "no_signal")]
+    assert det.status() == "ok"
+
+
+def test_t28_rut_day_che_roi_cam_lai_van_bat_duoc(cfg):
+    """Tình huống thật: kẻ phá rút dây camera, che ống kính, rồi cắm lại để qua mặt hệ thống.
+    Giả lập: mất tín hiệu 30s, có hình lại nhưng đã bị che kín.
+    Đỏ thì hỏng gì: thời gian chờ ổn định sau khi có hình lại bị lợi dụng để học / bỏ qua cảnh bị che.
+    """
+    c, det, rng, s = setup(cfg)
+    lose_signal(det, 20, 30)
+    ev = watch(det, lambda t: noisy(covered(), rng), 50, c["recover_grace_sec"] + c["hold_sec"] + 10)
+    assert ("tamper_start", "obstructed") in kinds(ev)
+    start = [e for e in ev if e["event"] == "tamper_start"][0]
+    assert start["ts"] - 50 <= c["recover_grace_sec"] + c["hold_sec"] + 1

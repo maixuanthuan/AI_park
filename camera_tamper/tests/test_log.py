@@ -224,3 +224,31 @@ def test_t25_loi_code_trong_thread_camera_thi_dung_toan_bo_ma_khac_0(tmp_path, m
     assert run_tamper.main(["--config", str(path)]) == 1
     fatal = [r for r in caplog.records if r.levelname == "ERROR" and "cam_a" in r.getMessage()]
     assert fatal and fatal[0].exc_info is not None  # có traceback đầy đủ
+
+
+class FlipSource(FakeSource):
+    """Nguồn giả không bao giờ kết nối được, lý do đổi qua lại (gặp thật 2026-10-16: timeout / refused / timeout...)."""
+    reasons = ["ffprobe: quá 10s không phản hồi", "[tcp @ 0x{:x}] Connection refused"]
+
+    def open(self):
+        self.n_open += 1
+        if self.n_open > 8:
+            FakeSource.stop.set()
+        self.last_error = self.reasons[self.n_open % 2].format(random.getrandbits(40))
+        return False
+
+
+def test_t29_ly_do_doi_qua_lai_chi_in_moi_ly_do_mot_lan(monkeypatch, caplog, cfg):
+    """Tình huống thật: camera đang khởi động lại, lý do mất kết nối đổi qua lại giữa "hết giờ chờ" và "bị từ chối".
+    Giả lập: 8 lần thử, xen kẽ 2 lý do.
+    Đỏ thì hỏng gì: một sự cố in ra nhiều dòng (đo 2026-10-16: 4 dòng cho 1 lần rút dây 1.5 phút), log lại rác.
+    """
+    monkeypatch.setattr(run_tamper, "FFmpegSource", FlipSource)
+    stop = threading.Event()
+    FakeSource.stop = stop
+    src_cfg = {"hwaccel": False, "out_width": 0, "read_timeout": 2, "sample_fps": 2, "reconnect_sec": 0.01}
+    caplog.set_level("INFO", logger="tamper")
+    run_tamper.run_camera({"id": "flip"}, "rtsp://x/y", cfg(), src_cfg, None, stop, [], {}, False,
+                          run_tamper.Stats(["flip"]))
+    lost = [r.getMessage() for r in caplog.records if "flip: mất kết nối" in r.getMessage()]
+    assert len(lost) == 2, lost

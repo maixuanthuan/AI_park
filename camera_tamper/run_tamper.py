@@ -211,18 +211,20 @@ def run_camera(cam, url, det_cfg, src_cfg, out_dir, stop, sources, latest, show,
         stats.set_state(cam_id, "mất kết nối" if down else det.status())
 
     def lost(reason):
-        # Mỗi sự cố 2 dòng: dòng "mất kết nối" khi bắt đầu (in lại chỉ khi LÝ DO đổi), dòng "có hình lại" khi hết.
+        # Mỗi sự cố 2 dòng: dòng "mất kết nối" khi bắt đầu (in thêm chỉ khi gặp LÝ DO MỚI), dòng "có hình lại" khi hết.
         # So lý do sau khi bỏ địa chỉ bộ nhớ (0x5bd7...): ffmpeg in địa chỉ khác nhau mỗi lần, không phải lý do mới.
         nonlocal down
         reason = reason or "stream kết thúc"
         key = _ADDR.sub("0x", reason)
         if down is None:
-            down = {"since": time.time(), "reason": None, "tries": 0}
+            down = {"since": time.time(), "seen": set(), "tries": 0}
         down["tries"] += 1
         stats.add(lost=1)
-        if key != down["reason"]:
-            log.warning("%s: mất kết nối: %s (thử lại mỗi %gs, chỉ báo lại khi lý do đổi)", cam_id, reason, reconnect_sec)
-            down["reason"] = key
+        # chỉ in lý do CHƯA GẶP trong sự cố này: camera khởi động lại hay đổi qua lại timeout / refused
+        # (đo 2026-10-16: 1 lần rút dây 1.5 phút ra 4 dòng khi in lại mỗi lần lý do đổi)
+        if key not in down["seen"]:
+            log.warning("%s: mất kết nối: %s (thử lại mỗi %gs, chỉ báo lý do mới)", cam_id, reason, reconnect_sec)
+            down["seen"].add(key)
         handle(det.update_no_frame(time.time()), None)
 
     while not stop.is_set():
