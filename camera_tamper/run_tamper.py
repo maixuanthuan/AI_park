@@ -8,6 +8,7 @@ import argparse
 import json
 import logging
 import os
+import sys
 import threading
 import time
 from collections import Counter
@@ -19,6 +20,8 @@ import numpy as np
 import yaml
 from dotenv import load_dotenv
 
+import tamper_detector
+from config_check import check_params
 from frame_source import FFmpegSource
 from tamper_detector import TamperDetector
 
@@ -28,6 +31,71 @@ cv2.setNumThreads(1)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SHOW_WIDTH = 960
 log = logging.getLogger("tamper")
+
+# Tham số đọc camera: tất cả bắt buộc trong config, ghi đè được theo từng camera ở cameras[].source.
+SOURCE_PARAMS = {
+    "hwaccel": ("bool", 0, 0, True),          # true = giải mã GPU (NVDEC), false = CPU (dự phòng)
+    "out_width": ("int", 0, 7680, True),      # 0 = giữ độ phân giải gốc
+    "read_timeout": ("num", 0, 300, False),   # quá bao nhiêu giây không có frame thì kill ffmpeg
+    "sample_fps": ("num", 0, 30, False),      # số frame/giây đưa vào detector
+    "reconnect_sec": ("num", 0, 300, False),  # mất kết nối thì chờ bao lâu rồi thử lại
+}
+TOP_KEYS = ("out_dir", "source", "detector", "cameras")
+CAM_KEYS = ("id", "url", "url_env", "source", "detector")
+
+
+def validate_config(cfg, check_env):
+    """Kiểm toàn bộ config, trả về MỌI lỗi (rỗng = hợp lệ).
+
+    check_env=True kiểm thêm môi trường của máy chạy: biến url_env có trong .env, file video có tồn tại.
+    """
+    if not isinstance(cfg, dict):
+        return ["config phải là một nhóm mục (key: value)"]
+    errors = [f"{k}: tên mục không tồn tại (gõ nhầm? các mục hợp lệ: {', '.join(TOP_KEYS)})"
+              for k in cfg if k not in TOP_KEYS]
+    errors += [f"{k}: thiếu" for k in TOP_KEYS if k not in cfg]
+    if "out_dir" in cfg and not (isinstance(cfg["out_dir"], str) and cfg["out_dir"]):
+        errors.append(f"out_dir = {cfg['out_dir']!r}: phải là đường dẫn thư mục")
+    if "source" in cfg:
+        errors += check_params(SOURCE_PARAMS, cfg["source"], "source")
+    det_ok = "detector" in cfg and not tamper_detector.check_cfg(cfg["detector"])
+    if "detector" in cfg:
+        errors += tamper_detector.check_cfg(cfg["detector"])
+
+    cams = cfg.get("cameras")
+    if "cameras" in cfg and not (isinstance(cams, list) and cams):
+        errors.append("cameras: phải có ít nhất 1 camera")
+        cams = []
+    seen = {}
+    for i, cam in enumerate(cams or []):
+        p = f"cameras[{i}]"
+        if not isinstance(cam, dict):
+            errors.append(f"{p}: phải là một nhóm mục (key: value)")
+            continue
+        errors += [f"{p}.{k}: tên mục không tồn tại (gõ nhầm? các mục hợp lệ: {', '.join(CAM_KEYS)})"
+                   for k in cam if k not in CAM_KEYS]
+        cid = cam.get("id")
+        if not (isinstance(cid, str) and cid):
+            errors.append(f"{p}.id: thiếu")
+        elif cid in seen:
+            errors.append(f"{p}.id = {cid!r}: trùng với cameras[{seen[cid]}]")
+        else:
+            seen[cid] = i
+        if ("url" in cam) == ("url_env" in cam):
+            errors.append(f"{p}: phải có đúng một trong hai: url (file video) hoặc url_env (tên biến trong .env)")
+        elif check_env and "url_env" in cam and not os.getenv(str(cam["url_env"])):
+            errors.append(f"{p}.url_env = {cam['url_env']!r}: chưa có trong .env")
+        elif check_env and "url" in cam and "://" not in str(cam["url"]) and not os.path.isfile(str(cam["url"])):
+            errors.append(f"{p}.url = {cam['url']!r}: không tìm thấy file (đường dẫn tính từ thư mục đang chạy)")
+        # phần ghi đè: kiểm từng mục có mặt; quan hệ giữa các mục kiểm trên bản đã gộp, khi bản chung hợp lệ
+        if "source" in cam:
+            errors += check_params(SOURCE_PARAMS, cam["source"], f"{p}.source", partial=True)
+        if "detector" in cam:
+            own = tamper_detector.check_cfg(cam["detector"], f"{p}.detector", partial=True)
+            errors += own
+            if not own and det_ok and isinstance(cam["detector"], dict):
+                errors += tamper_detector.check_cfg({**cfg["detector"], **cam["detector"]}, f"{p}.detector")
+    return errors
 
 
 def resolve_url(cam):
@@ -88,10 +156,10 @@ def draw(frame, det, cam_id):
 
 def run_camera(cam, url, det_cfg, src_cfg, out_dir, stop, sources, latest, show):
     cam_id = cam["id"]
-    sc = {**src_cfg, **cam.get("source", {})}
-    reconnect_sec = float(cam.get("reconnect_sec", 5.0))
-    src = FFmpegSource(url, fps=cam.get("sample_fps", 2.0), out_width=sc.get("out_width", 0),
-                       hwaccel=sc.get("hwaccel", True), read_timeout=sc.get("read_timeout", 10.0), name=cam_id)
+    sc = {**src_cfg, **cam.get("source", {})}  # phần ghi đè theo camera là tuỳ chọn; bản chung đã đủ mục
+    reconnect_sec = sc["reconnect_sec"]
+    src = FFmpegSource(url, fps=sc["sample_fps"], out_width=sc["out_width"],
+                       hwaccel=sc["hwaccel"], read_timeout=sc["read_timeout"], name=cam_id)
     sources.append(src)
     det = TamperDetector({**det_cfg, **cam.get("detector", {})})
     n_alarms = Counter()  # đếm cảnh báo theo loại, in tổng kết khi kết thúc
@@ -145,12 +213,22 @@ def main():
 
     logging.basicConfig(level=args.log_level, format="%(asctime)s %(levelname)s %(message)s")
     load_dotenv(os.path.join(BASE_DIR, ".env"))
-    with open(args.config) as f:
-        cfg = yaml.safe_load(f)
+    try:
+        with open(args.config) as f:
+            cfg = yaml.safe_load(f)
+    except (OSError, yaml.YAMLError) as e:
+        log.error("%s: không đọc được config: %s", args.config, e)
+        sys.exit(2)
 
-    det_cfg = cfg.get("detector", {})
-    src_cfg = cfg.get("source", {})
-    out_dir = cfg.get("out_dir", "tamper_events")
+    # config sai thì không khởi động: báo MỌI lỗi một lượt, trước khi mở camera nào
+    errors = validate_config(cfg, check_env=True)
+    if errors:
+        log.error("%s: không khởi động, %d lỗi:\n  %s", args.config, len(errors), "\n  ".join(errors))
+        sys.exit(2)
+
+    det_cfg = cfg["detector"]
+    src_cfg = cfg["source"]
+    out_dir = cfg["out_dir"]
     stop = threading.Event()
     sources, latest, shown = [], {}, {}
     threads = [threading.Thread(target=run_camera, daemon=True,

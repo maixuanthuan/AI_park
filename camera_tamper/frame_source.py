@@ -33,7 +33,7 @@ def _tail(lines, n=5):
 
 
 class FFmpegSource:
-    def __init__(self, url, fps=2.0, out_width=0, hwaccel=True, read_timeout=10.0, name="cam"):
+    def __init__(self, url, fps, out_width, hwaccel, read_timeout, name):
         self.url = url
         self.is_file = os.path.isfile(url)
         self.fps = float(fps)

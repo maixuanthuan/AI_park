@@ -7,6 +7,8 @@ source:
   hwaccel: true
   out_width: 0
   read_timeout: 10
+  sample_fps: 2
+  reconnect_sec: 5
 
 detector:
   width: 320
@@ -33,7 +35,7 @@ cameras:
   # đặt video vào thư mục videos/ trong project, mỗi video 1 mục
   - id: park1
     url: videos/park1.mp4
-    sample_fps: 2
   # - id: park_02
   #   url: videos/park_02.mp4
-  #   sample_fps: 2
+  - id: park1_tamper
+    url: videos/park1_tamper.mp4

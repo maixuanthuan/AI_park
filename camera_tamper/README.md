@@ -6,8 +6,15 @@ Detector chỉ dùng opencv + numpy, chạy CPU, không cần model. Đọc came
 ## Cấu trúc
 - `tamper_detector.py` — lõi detector, không IO: `update(frame, ts)` -> event | None
 - `frame_source.py` — đọc camera/video bằng ffmpeg subprocess (GPU hoặc CPU), watchdog, tự che user:pass trong log
-- `run_tamper.py` — runner đa camera, mỗi camera 1 thread, `--show` để xem live
+- `run_tamper.py` — runner đa camera, mỗi camera 1 thread, `--show` để xem live; kiểm config trước khi khởi động
+- `config_check.py` — kiểm một mục config: đủ mục, không mục lạ, đúng kiểu, trong khoảng
 - `config.yaml` — tham số + danh sách camera (`url_env` trỏ tới biến trong `.env`)
+
+## Config
+Mọi tham số **bắt buộc**, không có giá trị mặc định ngầm trong code. Config sai thì chương trình **không khởi động**
+(mã thoát 2) và in **mọi** lỗi một lượt: thiếu mục, gõ nhầm tên mục, sai kiểu, ngoài khoảng hợp lý, vùng đệm ngược chiều,
+trùng `id` camera, thiếu biến trong `.env`, không thấy file video.
+`source` và `detector` khai một lần; camera nào cần khác thì ghi đè trong `cameras[].source` / `cameras[].detector`.
 - `.env.example` — mẫu `.env` (link camera, thông tin nhạy cảm)
 
 ## Yêu cầu
@@ -37,7 +44,7 @@ Mỗi test có 3 dòng mô tả: tình huống thật / phần giả lập / đ�
 - `edge_keep_thr` — độ nhạy khi bị xoay
 - `hold_sec` — nhanh vs ít báo nhầm
 - `baseline_min_cells` — kiểm tra lúc học ảnh gốc; đặt 0 cho camera vốn nhìn cảnh trơn (hồ nước, bãi cỏ rộng)
-- `grid` — mặc định 8x8
+- `grid` — đang dùng 8x8
 - `osd_mask` — vùng chữ đồng hồ / logo cố định cần bỏ qua, theo từng camera (khung màu cam trên `--show`)
 
 ## Test báo nhầm bằng video công viên

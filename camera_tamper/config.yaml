@@ -5,6 +5,8 @@ source:
   hwaccel: true       # true = giải mã GPU (NVDEC), false = CPU (dự phòng)
   out_width: 0        # 0 = giữ độ phân giải gốc; vd 960 -> GPU thu nhỏ trước khi đưa về
   read_timeout: 10    # quá bao nhiêu giây không có frame thì kill ffmpeg, kết nối lại
+  sample_fps: 2       # số frame/giây đưa vào detector (ffmpeg giảm fps ngay trên GPU)
+  reconnect_sec: 5    # mất kết nối thì chờ bao lâu rồi thử lại
 
 # tham số detector, ghi đè được theo từng camera ở mục cameras[].detector
 detector:
@@ -31,13 +33,11 @@ detector:
 cameras:
   - id: cam_01
     url_env: CAM_01_URL   # link thật nằm trong .env
-    sample_fps: 2
     detector:
       osd_mask: [[0.0, 0.0, 1.0, 0.07]]   # dải chữ đồng hồ trên cùng (7% chiều cao); xem khung cam trên --show để chỉnh
 
   # test bằng file video thì khai báo url trực tiếp:
   # - id: test_video
   #   url: videos/tamper_test.mp4
-  #   sample_fps: 2
   #   detector:
   #     warmup_sec: 5

@@ -10,36 +10,61 @@ from collections import Counter
 import cv2
 import numpy as np
 
+from config_check import check_params
+
 HOLD = "_hold"  # frame nằm trong vùng đệm: vẫn tính là bất thường nhưng không bỏ phiếu nhãn
 
 
-class TamperDetector:
-    DEFAULTS = dict(
-        width=320,             # resize về chiều ngang này trước khi tính
-        grid=8,                # chia lưới grid x grid ô
-        osd_mask=[],           # vùng bỏ qua (chữ OSD đồng hồ...), list [x1, y1, x2, y2] theo tỉ lệ 0..1 của khung hình
-        warmup_sec=10.0,       # thời gian học ảnh gốc (chỉ tính các frame hợp lệ, liên tục)
-        baseline_min_cells=3,  # lúc học: frame phải có >= số ô có chi tiết này mới được học (0 = tắt kiểm tra)
-        hold_sec=3.0,          # bất thường (bất kể loại) giữ liên tục bao lâu mới báo
-        clear_sec=5.0,         # bình thường lại bao lâu mới báo hết
-        ref_alpha=0.02,        # tốc độ cập nhật ảnh gốc (EMA) khi trạng thái bình thường
-        cell_tex_min=30.0,     # ô có Laplacian var >= ngưỡng này mới tính là có chi tiết (bỏ ô trơn: trời, tường)
-        cell_drop_ratio=0.25,  # ô bị coi là mất chi tiết nếu var < ref * ratio
-        obstruct_frac=0.6,     # tỉ lệ ô mất chi tiết >= ngưỡng -> obstructed
-        dark_thr=15.0,         # mean < ngưỡng -> obstructed (đặt 0 để tắt nếu camera không có IR)
-        bright_thr=240.0,      # mean > ngưỡng -> obstructed (bị rọi đèn)
-        min_ref_edges=300,     # ảnh gốc ít cạnh hơn thì bỏ qua check scene_changed; lúc học: frame phải đủ số cạnh này
-        edge_keep_thr=0.35,    # tỉ lệ cạnh ảnh gốc còn khớp < ngưỡng -> scene_changed
-        exit_obstruct=0.35,    # đang bất thường: chỉ coi là hết khi obstruct < ngưỡng này
-        exit_edge_keep=0.6,    # ... và edge_keep > ngưỡng này (vùng đệm, tránh nhảy qua lại quanh ngưỡng)
-        frozen_sec=10.0,       # frame giống hệt nhau liên tục bao lâu -> frozen
-        relearn_sec=600.0,     # scene_changed kéo dài bao lâu thì học lại cảnh mới (0 = tắt)
-    )
+# Tham số detector: tất cả bắt buộc trong config, không có mặc định ngầm.
+# (kiểu, nhỏ nhất, lớn nhất, nhỏ nhất có được bằng không). Khoảng chỉ chặn lỗi gõ, giá trị dùng thật nằm trong config.
+PARAMS = {
+    "width": ("int", 64, 3840, True),            # resize về chiều ngang này trước khi tính
+    "grid": ("int", 2, 32, True),                # chia lưới grid x grid ô
+    "osd_mask": ("boxes", 0, 0, True),           # vùng bỏ qua (chữ OSD đồng hồ...), [x1, y1, x2, y2] theo tỉ lệ 0..1
+    "warmup_sec": ("num", 0, 600, False),        # thời gian học ảnh gốc (chỉ tính các frame hợp lệ, liên tục)
+    "baseline_min_cells": ("int", 0, 1024, True),  # lúc học: frame phải có >= số ô có chi tiết này (0 = tắt kiểm tra)
+    "hold_sec": ("num", 0, 3600, False),         # bất thường (bất kể loại) giữ liên tục bao lâu mới báo
+    "clear_sec": ("num", 0, 3600, False),        # bình thường lại bao lâu mới báo hết
+    "ref_alpha": ("num", 0, 1, False),           # tốc độ cập nhật ảnh gốc (EMA) khi trạng thái bình thường
+    "cell_tex_min": ("num", 0, 1e6, True),       # ô có Laplacian var >= ngưỡng này mới tính là có chi tiết
+    "cell_drop_ratio": ("num", 0, 1, False),     # ô bị coi là mất chi tiết nếu var < ref * ratio
+    "obstruct_frac": ("num", 0, 1, False),       # tỉ lệ ô mất chi tiết >= ngưỡng -> obstructed
+    "dark_thr": ("num", 0, 255, True),           # mean < ngưỡng -> obstructed (0 = tắt, vd camera không có IR)
+    "bright_thr": ("num", 0, 255, True),         # mean > ngưỡng -> obstructed (bị rọi đèn)
+    "min_ref_edges": ("int", 0, 1000000, True),  # ảnh gốc ít cạnh hơn thì bỏ qua scene_changed; lúc học phải đủ số này
+    "edge_keep_thr": ("num", 0, 1, True),        # tỉ lệ cạnh ảnh gốc còn khớp < ngưỡng -> scene_changed
+    "exit_obstruct": ("num", 0, 1, True),        # đang bất thường: chỉ coi là hết khi obstruct < ngưỡng này
+    "exit_edge_keep": ("num", 0, 1, True),       # ... và edge_keep > ngưỡng này (vùng đệm)
+    "frozen_sec": ("num", 0, 3600, False),       # frame giống hệt nhau liên tục bao lâu -> frozen
+    "relearn_sec": ("num", 0, 86400, True),      # scene_changed kéo dài bao lâu thì học lại cảnh mới (0 = tắt)
+}
 
-    def __init__(self, cfg=None):
-        c = dict(self.DEFAULTS)
-        c.update(cfg or {})
-        self.cfg = c
+
+def check_cfg(cfg, prefix="detector", partial=False):
+    """Kiểm config detector. Trả về danh sách câu lỗi (rỗng = hợp lệ)."""
+    errors = check_params(PARAMS, cfg, prefix, partial)
+    if errors or partial:
+        return errors  # quan hệ giữa các mục chỉ kiểm khi từng mục đã đúng và đủ
+    if not cfg["dark_thr"] < cfg["bright_thr"]:
+        errors.append(f"{prefix}: dark_thr ({cfg['dark_thr']}) phải nhỏ hơn bright_thr ({cfg['bright_thr']})")
+    if not cfg["exit_obstruct"] < cfg["obstruct_frac"]:
+        errors.append(f"{prefix}: exit_obstruct ({cfg['exit_obstruct']}) phải nhỏ hơn obstruct_frac "
+                      f"({cfg['obstruct_frac']}), không thì vùng đệm ngược chiều")
+    if not cfg["exit_edge_keep"] > cfg["edge_keep_thr"]:
+        errors.append(f"{prefix}: exit_edge_keep ({cfg['exit_edge_keep']}) phải lớn hơn edge_keep_thr "
+                      f"({cfg['edge_keep_thr']}), không thì vùng đệm ngược chiều")
+    if cfg["baseline_min_cells"] > cfg["grid"] ** 2:
+        errors.append(f"{prefix}: baseline_min_cells ({cfg['baseline_min_cells']}) lớn hơn số ô của lưới "
+                      f"({cfg['grid']}x{cfg['grid']}), sẽ không bao giờ học được ảnh gốc")
+    return errors
+
+
+class TamperDetector:
+    def __init__(self, cfg):
+        errors = check_cfg(cfg)
+        if errors:
+            raise ValueError("config detector không hợp lệ: " + "; ".join(errors))
+        self.cfg = dict(cfg)
         self.kernel = np.ones((5, 5), np.uint8)
         self.reset()
 
