@@ -12,3 +12,10 @@ __pycache__/
 # Ảnh chụp, ảnh sự cố (có thể lộ hình ảnh hiện trường)
 *.png
 *.jpg
+# Model, engine, thư viện build: nặng, sinh lại được (people_count/models chỉ commit script + labels)
+*.pt
+*.onnx
+*.engine
+*.so
+# Video debug của engine
+people_count/out/

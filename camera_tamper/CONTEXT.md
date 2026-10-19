@@ -38,7 +38,7 @@ Chuyển sang bài toán tiếp theo (đếm người / vật nuôi). Việc cò
 | `tamper_detector.py` | Lõi, không IO: `update(frame, ts)` / `update_no_frame(ts)` -> event \| None. Bảng `PARAMS` + `check_cfg` |
 | `frame_source.py` | `FFmpegSource`: ffprobe dò codec, ffmpeg (GPU/CPU) qua pipe, watchdog, `last_error`; **không tự in log** |
 | `run_tamper.py` | Runner: kiểm config, 1 thread / camera, log vận hành, thống kê định kỳ, `--show`. Mã thoát 0/1/2 |
-| `config_check.py` | Kiểm 1 mục config theo bảng: đủ, không mục lạ, đúng kiểu, trong khoảng |
+| `../common/config_check.py`, `../common/masking.py` | Dùng chung với people_count (tách 2026-10-19): kiểm 1 mục config theo bảng; che user:pass trong log. `run_tamper.py` / `tests/conftest.py` thêm thư mục AI_park vào `sys.path` |
 | `config.yaml` / `config.park.yaml` | Văn phòng (`hold_sec` 3) / công viên + test video (`hold_sec` 10) |
 | `tests/` | `fake_camera.py` (camera giả), test detector / config / khởi động / log |
 

@@ -7,7 +7,8 @@ Detector chỉ dùng opencv + numpy, chạy CPU, không cần model. Đọc came
 - `tamper_detector.py` — lõi detector, không IO: `update(frame, ts)` -> event | None
 - `frame_source.py` — đọc camera/video bằng ffmpeg subprocess (GPU hoặc CPU), watchdog, tự che user:pass trong log
 - `run_tamper.py` — runner đa camera, mỗi camera 1 thread, `--show` để xem live; kiểm config trước khi khởi động
-- `config_check.py` — kiểm một mục config: đủ mục, không mục lạ, đúng kiểu, trong khoảng
+- `../common/config_check.py` — kiểm một mục config: đủ mục, không mục lạ, đúng kiểu, trong khoảng (dùng chung với people_count)
+- `../common/masking.py` — che user:pass trong URL trước khi in log (dùng chung)
 - `config.yaml` — tham số + danh sách camera (`url_env` trỏ tới biến trong `.env`)
 
 ## Config

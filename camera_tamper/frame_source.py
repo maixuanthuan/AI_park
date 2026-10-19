@@ -6,7 +6,6 @@ GPU: -hwaccel cuda -> fps -> (scale_cuda) -> hwdownload -> bgr24 qua pipe.
 import json
 import logging
 import os
-import re
 import signal
 import subprocess
 import threading
@@ -15,16 +14,9 @@ from collections import deque
 
 import numpy as np
 
+from common.masking import mask  # noqa: F401  (test T11 và runner import mask từ đây)
+
 log = logging.getLogger("tamper")
-
-# Che tới dấu @ CUỐI CÙNG trước dấu / đầu tiên: mật khẩu dán nguyên văn có thể chứa @ (vd p@ss123).
-# Bản cũ dừng ở @ đầu tiên -> lộ phần sau (phát hiện 2026-10-15, khoá bằng test T11b).
-_CRED = re.compile(r"//[^/\s]*@")
-
-
-def mask(s):
-    """Che user:pass trong URL trước khi in log."""
-    return _CRED.sub("//***@", s)
 
 
 def _tail(lines, n=5):

@@ -10,7 +10,7 @@ from collections import Counter
 import cv2
 import numpy as np
 
-from config_check import check_params
+from common.config_check import check_params  # thư mục AI_park phải có trong sys.path (run_tamper / conftest đặt)
 
 HOLD = "_hold"  # frame nằm trong vùng đệm: vẫn tính là bất thường nhưng không bỏ phiếu nhãn
 

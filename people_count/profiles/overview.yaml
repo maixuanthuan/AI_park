@@ -1,0 +1,29 @@
+# Profile overview: thông số KỸ THUẬT (dev sửa, mỗi con số ghi đo gì / ngày nào; chưa đo thì ghi rõ).
+# Devops không sửa file này. Ngưỡng nghiệp vụ (báo cáo mỗi bao lâu...) nằm trong zones.yaml.
+stats_sec: 600            # mỗi 10 phút 1 dòng thống kê, in cả khi bằng 0: thấy đều = hệ còn sống (giống camera_tamper)
+pgie_config: nvinfer_yolo26n.txt   # config model (nvinfer), đường dẫn tính từ thư mục profiles/
+
+mux:
+  # mọi camera được co / giãn về khung này trước khi vào model. Không đệm viền (enable-padding=0) nên toạ độ
+  # tỉ lệ 0..1 vẫn đúng theo khung gốc của từng camera, kể cả camera khác tỉ lệ khung.
+  width: 1920
+  height: 1080
+  batched_push_timeout_us: 40000   # chờ tối đa 40ms để gom đủ 1 batch; camera chậm không giữ chân camera khác lâu hơn. Chưa đo.
+
+tracker:
+  # Đếm hiện diện không dùng track_id; bật để đo chi phí + độ ổn định ID sớm (phóng uế chạy cùng profile sẽ cần).
+  # NvSORT: nhẹ, chỉ dựa vị trí khung, không cần model ReID. Chưa đo CPU khi bật / tắt.
+  enable: true
+  config: /opt/nvidia/deepstream/deepstream/samples/configs/deepstream-app/config_tracker_NvSORT.yml
+  width: 640
+  height: 384
+
+rtsp:
+  reconnect_sec: 5     # camera rớt: nvurisrcbin thử kết nối lại mỗi 5s (giống reconnect_sec của camera_tamper)
+  latency_ms: 200      # bộ đệm RTSP. Chưa đo trên camera thật.
+
+count:
+  classes: [person, dog, cat]   # phải có trong labels của model; model cũng chỉ giữ 3 lớp này (filter-out-class-ids)
+
+zones:
+  aspect_tol: 0.02     # tỉ lệ khung luồng đang đọc lệch ref_size của vùng quá 2% -> báo lỗi, không đếm camera đó

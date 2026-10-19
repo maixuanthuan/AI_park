@@ -1,0 +1,9 @@
+# Thử với camera THẬT ở văn phòng (cùng camera cam_01 của camera_tamper).
+# python3 run_engine.py --cameras cameras.office.yaml --zones zones.office.yaml
+# Link nằm trong people_count/.env, biến CAM_01_URL (chép từ camera_tamper/.env).
+cameras:
+  - cam_id: cam_01
+    name: "Camera văn phòng (PTZ, HEVC 1280x960)"
+    url_env: CAM_01_URL
+    profile: overview
+    functions: [count]
