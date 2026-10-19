@@ -152,3 +152,14 @@ def test_k5_config_dang_giao_phai_hop_le(cams, zones):
     """
     assert validate_all(load(cams), load(zones), load("profiles/overview.yaml"),
                         ROOT, PROFILE_DIR, check_env=False) == []
+
+def test_k6_profile_thi_nghiem_chi_khac_ban_chuan_o_stats_sec():
+    """Tình huống thật: đo tải bằng tools/bench.sh với profiles/bench.yaml, rồi lấy số đo đó làm capacity cho bản chuẩn.
+    Giả lập: so profiles/bench.yaml với profiles/overview.yaml.
+    Đỏ thì hỏng gì: bản thí nghiệm lệch bản chuẩn ở mục khác (model, mux, tracker...) -> số đo không áp được cho vận hành.
+    """
+    bench, std = load("profiles/bench.yaml"), load("profiles/overview.yaml")
+    assert {k for k in std if std[k] != bench.get(k)} == {"stats_sec"}
+    assert set(bench) == set(std)
+    cams, zones, _ = base()
+    assert validate_all(cams, zones, bench, ROOT, PROFILE_DIR, check_env=False) == []

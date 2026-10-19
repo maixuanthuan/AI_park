@@ -7,6 +7,7 @@ Probe KHÔNG kéo ảnh về CPU, chỉ đọc metadata. Logic (vùng, đếm) k
 """
 import logging
 import math
+import os
 import re
 import signal
 import time
@@ -25,6 +26,7 @@ log = logging.getLogger("engine")
 TRACKER_LIB = "/opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so"
 TCP_ONLY = 4  # nvurisrcbin select-rtp-protocol: 4 = chỉ TCP (như -rtsp_transport tcp của camera_tamper)
 _ADDR = re.compile(r"0x[0-9a-fA-F]+")
+DOT_AFTER_SEC = 15  # xuất sơ đồ sau 15s: nạp model ~5s + camera nối xong, các khối con của nvurisrcbin đã được tạo
 GIVE_UP_SEC = 5  # nhận lệnh dừng mà pipeline chưa kết thúc sau 5s thì dừng hẳn; phải < 10s mặc định của docker stop
 
 
@@ -119,6 +121,8 @@ class Pipeline:
             signal.signal(sig, signal.SIG_DFL)
             GLib.unix_signal_add(GLib.PRIORITY_HIGH, sig, self._on_signal, sig)
         self.pipe.set_state(Gst.State.PLAYING)
+        if os.environ.get("GST_DEBUG_DUMP_DOT_DIR"):  # công cụ cho dev nhìn pipeline thật, mặc định tắt
+            GLib.timeout_add_seconds(DOT_AFTER_SEC, self._dump_dot)
         try:
             self.loop.run()
         finally:
@@ -140,6 +144,13 @@ class Pipeline:
             pad.send_event(Gst.Event.new_eos())
         GLib.timeout_add_seconds(GIVE_UP_SEC, self._give_up)
         return True
+
+    def _dump_dot(self):
+        """Ghi sơ đồ pipeline đang chạy (mọi khối, kể cả khối con tự sinh bên trong bin, kèm caps trên từng liên kết)
+        ra GST_DEBUG_DUMP_DOT_DIR/pipeline.dot. Ứng dụng tự viết phải tự gọi; chỉ gst-launch mới tự xuất."""
+        Gst.debug_bin_to_dot_file(self.pipe, Gst.DebugGraphDetails.ALL, "pipeline")
+        log.info("đã xuất sơ đồ pipeline: %s/pipeline.dot", os.environ["GST_DEBUG_DUMP_DOT_DIR"])
+        return False
 
     def _give_up(self):
         log.warning("pipeline không kết thúc trong %ds sau lệnh dừng, dừng hẳn", GIVE_UP_SEC)

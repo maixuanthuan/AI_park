@@ -109,6 +109,60 @@ module `count` đếm **hiện diện** (bao nhiêu người, chó, mèo đang �
 - Đo bằng lệnh: entrypoint image tách lại `bash -c "..."` -> không bọc lệnh docker bằng `bash -c`; `kill -0` tiến trình root
   từ user thường báo "không có quyền" -> dùng `[ -d /proc/$P ]`.
 
+## Hướng mới (2026-10-19 chiều): DeepStream engineer — nhiều camera, tận dụng GPU, tối ưu tài nguyên
+Thuận muốn tập trung vào pipeline DeepStream ở mức engineer, nghiệp vụ chỉ là module cắm cuối. Lộ trình, mỗi bước là thí nghiệm
+(dự đoán trước -> đo -> giải thích):
+- A. Nhìn pipeline thật: A1 sơ đồ (`GST_DEBUG_DUMP_DOT_DIR`, `_dump_dot` trong pipeline.py), A2 độ trễ từng khối.
+- B. Giả lập N camera (MediaMTX phát lại video thành RTSP đúng thời gian thực) + script benchmark N = 1, 2, 4, 8, 16: fps / dec% / sm% / CPU / VRAM.
+- C. Đòn bẩy tối ưu, mỗi lần một biến: giải mã (độ phân giải, chỉ keyframe), inference (interval, batch, INT8, model n/s), hậu xử lý GPU, tracker.
+- D. Production: một hay nhiều tiến trình, giám sát từng luồng, soak test 24h, Docker Compose.
+- B đang làm: `tools/bench.sh` (relay MediaMTX nhân 1 camera văn phòng thành N luồng; Thuận đề xuất nhân bản camera thật thay vì quay
+  video — vừa đo tải vừa thử relay của KIEN_TRUC 3.2). Dự đoán của Claude trước khi đo (tính từ số đã có): model trần ~790 frame/s
+  (630 fps ở sm ~80%), model luôn co về 640x640 nên không phụ thuộc độ phân giải camera -> ~31 camera 25 fps; giải mã 1280x960 H.265
+  nhẹ hơn video 1080p -> fps tụt ở ~25-30 camera, model hết sức trước (ngược sáng nay); hoặc VRAM GPU laptop hết trước.
+- **Kết quả B đầu tiên (2026-10-19, camera văn phòng qua relay, H.265 1280x960 25 fps, đo 60s/N, 1 lần):**
+  N=1: fps 25.0, sm 9%, dec 1%, VRAM 365 MB, CPU 9.5% 1 nhân. N=4: fps 25.0, sm 23%, dec 5%, VRAM 616 MB, CPU 9.3%. Relay mất gói 0.
+  Đã kiểm toàn pipeline chạy: n4 có 12 báo cáo, mỗi camera 3. Đọc: batching -> 4 camera tốn 23% chứ không 36% (~9% -> ~6%/camera);
+  giải mã ~1.2%/camera (H.265 1280x960 nhẹ, không phải nút cổ chai); VRAM ~84 MB/camera thêm. Ước lượng (chưa đo): sm chạm ~100% ở > 40 camera.
+  Dựng engine batch 4: 255s. Relay mặc định kéo camera bằng UDP -> "1 RTP packet lost" -> đã ép TCP (`MTX_PATHS_CAM_RTSPTRANSPORT=tcp`).
+- **Capacity robo, camera văn phòng nhân bản qua relay (2026-10-19, 60s/N, 1 lần mỗi N, relay mất gói 0):**
+  | N | fps thấp nhất | sm% | dec% | VRAM MB | RAM python MB (đầu->cuối 60s) | CPU % 1 nhân |
+  |---|---|---|---|---|---|---|
+  | 1 | 25.0 | 16 | 1 | 365 | 2220->2221 | 5.7 |
+  | 4 | 25.0 | 24 | 5 | 606 | 2408->2412 | 10.1 |
+  | 8 | 25.0 | 34 | 10 | 928 | 3029->3038 | 16.8 |
+  | 16 | 25.0 | 50 | 18 | 1571 | 3527->3543 | 29.8 |
+  | 24 | 25.0 | 65 | 27 | 2205 | 4015->4042 | 53.1 |
+  | 32 | 24.9 | 84 | 39 | 2842 | 4510->4548 | 65.4 |
+  | 40 | 39/40 camera có hình sau 900s; camera còn lại "Resetting source" 90 lần | | | | | |
+  N=40 (log): cả 39 camera tụt còn 17-22 fps, tổng ~800 frame/s (20-25.6 nghìn / 30s) -> **trần thông lượng model ~800 frame/s**
+  (khớp ước lượng sáng 790) -> **capacity robo = 32 camera 25 fps, sát trần**; giao vận hành (chừa 20-30%) ~24-25 camera.
+  Camera vào sau cùng không kịp frame đầu trong 5s -> "Resetting source" mãi: hệ quá tải "chết lặng" (vài camera không bao giờ lên), không sập.
+  **Bài học (Claude sai 2026-10-19): % sử dụng (sm 84%) KHÔNG phải sức còn dư** -> đo THÔNG LƯỢNG (frame/s xử lý vs frame/s đến).
+  Nhỏ: "đang chờ hình đầu tiên" in 2 lần cho cùng camera (câu của nvurisrcbin có lẽ khác nhau chút) -> chưa sửa.
+  Mỗi camera thêm (16->32): sm ~2.1%, dec ~1.3%, VRAM ~79 MB, CPU ~2.2% 1 nhân -> model hết sức trước
+  (ngược video 1080p H.264 sáng: giải mã trước) -> nút cổ chai do loại camera quyết định. Dựng engine b8/b16/b24/b32: 280-345s.
+  Mở: (a) [đã trả lời: đúng, quá tải] (b) RAM python tăng trong 60s, tăng theo N (+1 MB ở N=1, +38 MB ở N=32): ấm bộ đệm hay rò bộ nhớ -> soak N=24 1 giờ;
+  (c) sm N=1 lần này 16% vs 9% lần trước: mỗi điểm 1 lần chạy, ±vài %.
+  Vì model là nút cổ chai: `nvinfer interval` (bỏ frame ở model, tracker nội suy) giờ CÓ tác dụng -> dự đoán nút cổ chai tiếp theo
+  là giải mã / VRAM ~70+ camera (thí nghiệm C).
+- **Giả thuyết của Thuận**: công viên đông người -> tốn hơn văn phòng (VRAM ~5 GB -> ~6 GB). Theo cơ chế: model chính quét cả ảnh 640x640
+  mọi frame bất kể số người -> GPU (sm) và VRAM gần như KHÔNG đổi; tracker + probe + đếm (CPU) tăng theo số người; model phụ (sau này)
+  tăng GPU theo số đối tượng. Thí nghiệm 1 biến: cắt park1 thành `park_dong` (~0.5-5.5 phút, trung vị 4-8 người) và `park_vang`
+  (~7-11 phút, 0-1 người), cùng codec / độ phân giải / fps -> bench cùng N, so sm / VRAM / CPU.
+- **Kết quả đông vs vắng (2026-10-19, N=16, park1 1080p H.264 25 fps, 60s, 1 lần):** đông / vắng: sm 39 / 44%, dec 62 / 61%,
+  VRAM 1315 / 1315 MB, **CPU 50.2 / 33.0% 1 nhân (+~50%)**, fps thấp nhất 24.2 / 24.7. -> Giả thuyết Thuận đúng một nửa:
+  đông người tốn hơn ở CPU (tracker + probe + đếm theo từng người), KHÔNG ở GPU / VRAM (model quét cả ảnh mọi frame).
+  CPU vẫn xa trần (~3% 1 nhân / camera lúc đông, robo 16 nhân). Model phụ sau này sẽ tăng GPU theo số đối tượng -> đo lại.
+  Phụ: cùng N=16, dec 62% (1080p H.264) vs 18% (camera văn phòng H.265 1280x960) -> loại luồng camera quyết định giải mã ~3x;
+  camera 1080p H.264 thì giải mã chạm trần ~25 camera, trước model. -> **cần độ phân giải + codec luồng camera công viên để tính capacity.**
+- **Soak 1 giờ, N=24 camera văn phòng (2026-10-19 15:50-16:50):** fps thấp nhất suốt 1 giờ 24.9; VRAM 2195 -> 2195 MB (không rò GPU);
+  mất kết nối 0, relay mất gói 0; RAM python 3620 -> 3671 MB (+51 MB) — CHƯA kết luận: 2 điểm không phân biệt "ấm lên rồi đứng yên"
+  với "rò đều 51 MB/h (~1.2 GB/ngày)". -> bench.sh ghi RAM mỗi 60s (`ram.tsv`) + cột `ram_doc_MB/h` (hồi quy nửa sau; kiểm bằng
+  dữ liệu mẫu: đứng yên -> 0.0, rò đều 51 -> 51.1).
+- Tiếp: soak qua đêm N=24 10 giờ (`BENCH_MEASURE=36000`, nohup + systemd-inhibit, laptop cắm sạc) -> thí nghiệm C1 `nvinfer interval`.
+Dự đoán A1 của Thuận (ghi trước khi đo): nvurisrcbin ~4 khối (đọc luồng, kết nối lại, ghi theo sự kiện, giải mã); toàn pipeline trên GPU, Python chỉ metadata.
+
 ## Việc tiếp theo (theo thứ tự)
 1. **Camera văn phòng thật** (Phiên tới 1-2). Mux theo tỉ lệ camera: thử `mux` 1280x960 vs 1920x1080 trên cùng camera (một biến),
    nhìn video debug; nếu cần thì bàn cách cho nhiều tỉ lệ khung trong 1 batch (đệm viền + đổi toạ độ). Dòng cảnh báo audio nếu camera có tiếng.
