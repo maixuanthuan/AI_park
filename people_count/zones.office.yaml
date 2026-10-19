@@ -1,0 +1,10 @@
+# Vùng cho camera văn phòng: cả khung. ref_size = khung luồng camera (1280x960, tỉ lệ 4:3, theo camera_tamper/CONTEXT.md).
+# Nếu luồng thật khác tỉ lệ, engine sẽ báo lỗi tỉ lệ khung và không đếm (đó là cách kiểm luôn tính năng này).
+zones:
+  - zone_id: z-cam01-all
+    cam_id: cam_01
+    function: count
+    polygon: [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
+    ref_size: [1280, 960]
+    params: {report_sec: 30}
+    version: 1

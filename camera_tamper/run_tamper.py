@@ -15,6 +15,8 @@ import time
 from collections import Counter
 
 os.environ.setdefault("OMP_NUM_THREADS", "1")  # phải đặt trước khi import cv2/numpy
+# thư mục AI_park: để import common/ (code dùng chung các bài toán), chạy từ thư mục nào cũng được
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import cv2
 import numpy as np
@@ -22,7 +24,7 @@ import yaml
 from dotenv import load_dotenv
 
 import tamper_detector
-from config_check import check_params
+from common.config_check import check_params
 from frame_source import FFmpegSource
 from tamper_detector import TamperDetector
 

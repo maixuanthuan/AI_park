@@ -1,0 +1,19 @@
+# Vùng — sau này BACKEND vẽ trên VMS và gửi sang; trước mắt đọc file này, đúng định dạng dự kiến (KIEN_TRUC mục 6).
+#   polygon   các điểm [x, y] theo TỈ LỆ 0..1 của khung hình (không phải pixel)
+#   ref_size  [rộng, cao] của khung lúc vẽ; luồng đang đọc khác tỉ lệ khung -> báo lỗi, không đếm camera đó
+#   params    ngưỡng NGHIỆP VỤ của vùng. count: report_sec = mỗi bao nhiêu giây gửi 1 báo cáo
+zones:
+  - zone_id: z-test-park1-2min-all
+    cam_id: test-park1-2min
+    function: count
+    polygon: [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]   # cả khung
+    ref_size: [1920, 1080]
+    params: {report_sec: 30}       # 30s: cùng nhịp bản thử ds_count.py để so số
+    version: 1
+  - zone_id: z-test-park1-all
+    cam_id: test-park1
+    function: count
+    polygon: [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
+    ref_size: [1920, 1080]
+    params: {report_sec: 30}
+    version: 1

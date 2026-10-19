@@ -1,0 +1,25 @@
+# Danh sách camera — DEVOPS điền. Không có con số kỹ thuật nào ở đây.
+# Mỗi engine chỉ chạy camera thuộc profile của nó (engine này: overview); tamper chạy cho mọi camera.
+#   cam_id    UUID do hệ thống / backend cấp, là khoá với backend, KHÔNG BAO GIỜ đổi
+#   name      tên cho người đọc log, đổi thoải mái
+#   url_env   tên biến trong .env chứa link camera (link có user/pass không bao giờ ghi ở đây)
+#   url       CHỈ dùng cho file video thử, đường dẫn tính từ thư mục people_count
+#   profile   overview | face | plate
+#   functions chức năng bật cho camera này, phải thuộc profile (overview: count)
+cameras:
+  - cam_id: test-park1-2min        # video thử; camera thật dùng UUID
+    name: "Video thử: đường phố 2 phút"
+    url: videos/park1_2min.mp4
+    profile: overview
+    functions: [count]
+  - cam_id: test-park1
+    name: "Video thử: phóng sự công viên 11 phút"
+    url: videos/park1.mp4
+    profile: overview
+    functions: [count]
+  # camera thật:
+  # - cam_id: 3f2a9c1e-7b4d-4e1a-9c2f-1a2b3c4d5e6f
+  #   name: "Khu vui chơi trẻ em"
+  #   url_env: CAM_3F2A_URL
+  #   profile: overview
+  #   functions: [count]

@@ -12,6 +12,7 @@ import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # thư mục camera_tamper
 sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.dirname(ROOT))  # thư mục AI_park: để import common/
 
 
 @pytest.fixture

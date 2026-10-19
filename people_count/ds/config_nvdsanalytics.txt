@@ -1,0 +1,15 @@
+# Vùng đếm cho nvdsanalytics. Toạ độ theo khung config-width x config-height.
+[property]
+enable=1
+config-width=1920
+config-height=1080
+# 2 = vẽ toàn bộ thông tin analytics (vùng, nhãn) lên hình
+osd-mode=2
+display-font-size=12
+
+# camera 0: vùng đếm = cả khung hình (4 góc)
+[roi-filtering-stream-0]
+enable=1
+roi-ZONE=0;0;1919;0;1919;1079;0;1079
+inverse-roi=0
+class-id=-1
