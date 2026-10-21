@@ -26,7 +26,9 @@ docker run --rm --init --gpus all -v ~/PycharmProjects/AI_park:/work aipark-over
 - Camera văn phòng thật: thêm `--cameras cameras.office.yaml --zones zones.office.yaml` (link `CAM_01_URL` trong `.env`).
 - Dừng gọn: `docker stop <tên container>` (SIGTERM, như Docker Compose) hoặc Ctrl+C: gửi báo cáo cửa sổ đang dở, ghi xong file debug,
   tối đa 5s. Cần `docker run --init` và image có entrypoint riêng (Dockerfile) để tín hiệu tới thẳng python.
-- `--debug-out out/x.mkv`: ghi video có vẽ khung để xem bằng mắt (chỉ để dev, mặc định tắt). Bắt buộc `.mkv`: bị cắt ngang vẫn xem được.
+- `--debug-out out/x.mkv`: video DEMO / debug (mặc định tắt): khung đối tượng, viền vùng, số **hiện diện** của frame đang hiện
+  (đếm khung trên hình để đối chiếu); kèm `out/x.jsonl` = mọi event (báo cáo trung vị / max), 1 dòng JSON / event.
+  Bắt buộc `.mkv`: bị cắt ngang vẫn xem được. Xem: `vlc out/x.mkv`.
 - Engine `models/model_b<N>_gpu0_fp16.engine` theo số camera N: lần đầu dựng 1-3 phút, các lần sau nạp ngay.
 - File do container tạo thuộc root: `sudo chown -R $USER:$USER people_count/models people_count/out`.
 
