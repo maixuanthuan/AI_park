@@ -75,3 +75,65 @@ def test_m5_nhan_chap_chon_van_bao_va_het_dung_luc():
     ev += run(mod, lambda t: [PERSON], 30, 30)
     assert [e["event_type"] for e in ev] == ["alert_start", "alert_end"]
     assert ev[1]["ts"] - ev[0]["ts"] >= 10
+
+# ---------- lan_chiem ----------
+from lan_chiem import LanChiemModule  # noqa: E402
+
+MOTO = ("motorcycle", "chair", "vendor_cart")
+
+
+def xe(x, cls="motorcycle"):
+    return Obj(cls, 0.8, (x, 0.6, x + 0.08, 0.75), None)
+
+
+def lc_run(mod, objs_at, start, seconds, fps=1.0):
+    ev = []
+    for i in range(int(round(seconds * fps))):
+        t = start + i / fps
+        ev += mod.update(FrameMeta("a", t, 1920, 1080, tuple(objs_at(t))))
+    return ev
+
+
+def test_m6_xe_do_lau_thi_bao_mot_lan_kem_danh_sach_vat():
+    """Tình huống thật: một xe máy và một bộ bàn ghế quán cóc đặt trên vỉa hè hơn 1 phút.
+    Giả lập: dwell 60s, lấy mẫu mỗi 5s; xe máy + ghế đứng yên 150 giây.
+    Đỏ thì hỏng gì: lấn chiếm thật không được báo, hoặc mỗi vật / mỗi mẫu một cảnh báo (người quản lý bị spam).
+    """
+    mod = LanChiemModule("a", MOTO, dwell_sec=60)
+    ev = lc_run(mod, lambda t: [xe(0.2), xe(0.5, "chair")], 0, 150)
+    assert [e["event_type"] for e in ev] == ["alert_start"]
+    assert 60 <= ev[0]["ts"] <= 65 and ev[0]["function"] == "lan_chiem"
+    assert sorted(v["cls"] for v in ev[0]["payload"]["vat"]) == ["chair", "motorcycle"]
+
+
+def test_m7_xe_chay_ngang_qua_khong_bao():
+    """Tình huống thật: dòng xe máy chạy qua đoạn vỉa hè / lòng đường trong khung hình liên tục.
+    Giả lập: mỗi giây có 3 xe máy ở vị trí khác nhau (xe chạy), kéo dài 5 phút.
+    Đỏ thì hỏng gì: xe chạy qua bị báo lấn chiếm cả ngày.
+    """
+    mod = LanChiemModule("a", MOTO, dwell_sec=60)
+    assert lc_run(mod, lambda t: [xe((t * 0.07 + k * 0.3) % 0.9) for k in range(3)], 0, 300) == []
+    assert lc_run(mod, lambda t: [], 300, 70) == []
+    assert mod.cands == []  # vật không thấy lại quá dwell bị xoá: bộ nhớ không phình theo số xe chạy qua
+
+
+def test_m8_bi_che_khuat_mot_phan_thoi_gian_van_bao():
+    """Tình huống thật: xe đẩy hàng rong đứng yên, người đi qua che khuất / model sót 1/3 số lần.
+    Giả lập: xe đẩy có mặt ở 2/3 số mẫu trong 150 giây.
+    Đỏ thì hỏng gì: luật đòi thấy liên tục -> lấn chiếm thật ở chỗ đông người không bao giờ được báo.
+    """
+    mod = LanChiemModule("a", MOTO, dwell_sec=60)
+    ev = lc_run(mod, lambda t: [xe(0.4, "vendor_cart")] if int(t / 5) % 3 else [], 0, 150)
+    assert [e["event_type"] for e in ev] == ["alert_start"]
+
+
+def test_m9_don_di_thi_het_va_khong_bao_lai_khi_doi_danh_sach():
+    """Tình huống thật: quán cóc kê thêm ghế giữa chừng, rồi dọn hết đi.
+    Giả lập: xe máy 120s; từ giây 90 thêm ghế; từ giây 120 không còn gì trong 120s.
+    Đỏ thì hỏng gì: thêm 1 ghế lại bắn cảnh báo mới; dọn đi rồi mà cảnh báo không bao giờ đóng.
+    """
+    mod = LanChiemModule("a", MOTO, dwell_sec=60)
+    ev = lc_run(mod, lambda t: [xe(0.2)] + ([xe(0.6, "chair")] if t >= 90 else []), 0, 120)
+    ev += lc_run(mod, lambda t: [], 120, 120)
+    assert [e["event_type"] for e in ev] == ["alert_start", "alert_end"]
+    assert 120 < ev[1]["ts"] <= 160  # vật dọn đi: tỉ lệ có mặt tụt dưới nửa sau ~dwell/2

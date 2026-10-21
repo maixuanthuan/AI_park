@@ -1,0 +1,26 @@
+# Danh sách lớp của MODEL CHUNG profile overview (bản 0, 2026-10-21, Thuận chốt "tạm thời đủ").
+# Một chỗ duy nhất: công cụ thử nhận diện + gán nhãn tự động (nhan_dien.py) và sau này train đều đọc file này.
+# THỨ TỰ = id lớp trong file nhãn YOLO: đã có nhãn thì CHỈ thêm lớp mới vào CUỐI, không xoá / đổi chỗ (nhãn cũ sai nghĩa).
+#
+#   name    tên lớp (tiếng Anh, không dấu: nằm trong file nhãn và model)
+#   coco    id lớp COCO nếu YOLO26n có sẵn lớp này (không có thì bỏ trống)
+#   prompts chữ gõ cho YOLOE (open-vocabulary); nhiều chữ cùng nghĩa, gộp lại khi xét
+#   nguon   nguồn chính để VẼ và GHI NHÃN: coco | yoloe. Lớp có cả hai thì bảng thống kê so cả hai
+#   conf    độ tin tối thiểu để vẽ / ghi nhãn. Chưa đo: coco 0.25 (mặc định detector), yoloe 0.3 (thử băng rôn 2026-10-21)
+classes:
+  # đếm, đám đông
+  - {name: person, coco: 0, nguon: coco, conf: 0.25}
+  - {name: dog, coco: 16, nguon: coco, conf: 0.25}
+  - {name: cat, coco: 15, nguon: coco, conf: 0.25}
+  # biểu tình
+  - {name: banner, prompts: [banner, protest sign, placard], nguon: yoloe, conf: 0.3}
+  # lấn chiếm vỉa hè
+  - {name: motorcycle, coco: 3, prompts: [motorcycle, motorbike, scooter], nguon: coco, conf: 0.25}
+  - {name: bicycle, coco: 1, prompts: [bicycle], nguon: coco, conf: 0.25}
+  - {name: car, coco: 2, prompts: [car], nguon: coco, conf: 0.25}
+  - {name: umbrella, coco: 25, prompts: [umbrella, parasol, beach umbrella], nguon: coco, conf: 0.25}
+  - {name: chair, coco: 56, prompts: [plastic stool, plastic chair, low stool], nguon: coco, conf: 0.25}
+  - {name: table, coco: 60, prompts: [plastic table, small table, folding table], nguon: coco, conf: 0.25}
+  - {name: vendor_cart, prompts: [street vendor cart, pushcart, food cart], nguon: yoloe, conf: 0.3}
+  - {name: shoulder_pole, prompts: [shoulder pole with baskets, carrying pole, street vendor baskets], nguon: yoloe, conf: 0.3}
+  - {name: stall, prompts: [market stall, street stall, tarp canopy], nguon: yoloe, conf: 0.3}
