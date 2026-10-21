@@ -2,6 +2,7 @@
 #   polygon   các điểm [x, y] theo TỈ LỆ 0..1 của khung hình (không phải pixel)
 #   ref_size  [rộng, cao] của khung lúc vẽ; luồng đang đọc khác tỉ lệ khung -> báo lỗi, không đếm camera đó
 #   params    ngưỡng NGHIỆP VỤ của vùng. count: report_sec = mỗi bao nhiêu giây gửi 1 báo cáo
+#             crowd: min_people (từ bấy nhiêu người là đông), hold_sec / clear_sec (trung vị bấy nhiêu giây gần nhất để báo / hết)
 zones:
   - zone_id: z-test-park1-2min-all
     cam_id: test-park1-2min
@@ -16,4 +17,11 @@ zones:
     polygon: [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
     ref_size: [1920, 1080]
     params: {report_sec: 30}
+    version: 1
+  - zone_id: z-test-park1-crowd
+    cam_id: test-park1
+    function: crowd
+    polygon: [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
+    ref_size: [1920, 1080]
+    params: {min_people: 6, hold_sec: 10, clear_sec: 10}   # demo: chọn theo trung vị 4-8 người của park1, không phải số khách hàng
     version: 1

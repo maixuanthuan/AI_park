@@ -10,8 +10,13 @@ FUNCTION_PARAMS = {
     "count": {
         "report_sec": ("num", 0, 86400, False),  # mỗi bao nhiêu giây gửi 1 báo cáo đếm của vùng
     },
+    "crowd": {
+        "min_people": ("int", 1, 100000, True),  # từ bấy nhiêu người trong vùng trở lên là đông
+        "hold_sec": ("num", 0, 86400, False),    # trung vị số người bấy nhiêu giây gần nhất >= min_people -> báo
+        "clear_sec": ("num", 0, 86400, False),   # đang báo: trung vị bấy nhiêu giây gần nhất < min_people -> hết
+    },
 }
-NEEDS_ZONE = ("count",)  # chức năng không có vùng thì không làm được gì -> camera bật mà thiếu vùng là lỗi
+NEEDS_ZONE = ("count", "crowd")  # chức năng không có vùng thì không làm được gì -> camera bật mà thiếu vùng là lỗi
 _EPS = 1e-9
 
 

@@ -140,7 +140,7 @@ def test_e6_bao_cao_luc_dung_cung_duoc_dem(caplog):
     eng.stats()
     reports = [r for r in caplog.records if '"event_type": "report"' in r.getMessage()]
     assert len(reports) == 1
-    assert "báo cáo 1 |" in stats_lines(caplog)[0], stats_lines(caplog)[0]
+    assert "event 1 |" in stats_lines(caplog)[0], stats_lines(caplog)[0]
 
 
 def test_e7_video_debug_phai_la_mkv(tmp_path):

@@ -11,7 +11,7 @@ from common.config_check import check_params
 from zones import check_zones
 
 # Module logic mỗi profile chạy được. Chỉ ghi module ĐÃ CÓ: khai chức năng chưa có module thì báo lỗi ngay.
-PROFILES = {"overview": ("count",), "face": ("face",), "plate": ("plate",)}
+PROFILES = {"overview": ("count", "crowd"), "face": ("face",), "plate": ("plate",)}
 CAM_KEYS = ("cam_id", "name", "url", "url_env", "profile", "functions")
 
 # (kiểu, nhỏ nhất, lớn nhất, nhỏ nhất có được bằng không). Khoảng chỉ chặn lỗi gõ, giá trị thật nằm trong file.

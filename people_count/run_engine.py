@@ -23,6 +23,7 @@ from dotenv import load_dotenv  # noqa: E402
 
 from config import validate_all  # noqa: E402
 from counter import CountModule  # noqa: E402
+from crowd import CrowdModule  # noqa: E402
 from events import envelope  # noqa: E402
 from meta import Text  # noqa: E402
 from zones import aspect_ok  # noqa: E402
@@ -59,8 +60,10 @@ class Engine:
         self.events_out = events_out
         self.clock = clock  # truyền vào để test chỉnh được giờ
         self.zones = {c["cam_id"]: [z for z in zones if z["cam_id"] == c["cam_id"]] for c in cams}
-        self.modules = {c["cam_id"]: CountModule(c["cam_id"], self.zones[c["cam_id"]], prof["count"]["classes"])
-                        for c in cams if "count" in c["functions"]}
+        # mỗi camera: danh sách module theo chức năng đã bật (config đã kiểm chức năng thuộc profile overview)
+        make = {"count": lambda cid: CountModule(cid, self.zones[cid], prof["count"]["classes"]),
+                "crowd": lambda cid: CrowdModule(cid, self.zones[cid])}
+        self.modules = {c["cam_id"]: [make[f](c["cam_id"]) for f in c["functions"]] for c in cams}
         self.checked, self.bad_aspect = set(), set()
         self.frames = dict.fromkeys(self.zones, 0)
         self.reports = 0
@@ -93,14 +96,13 @@ class Engine:
                     shapes[cid] = [Text(0.0, 0.0, 0, f"{cid}: stream {fm.src_w}x{fm.src_h} khac ti le vung -> KHONG dem",
                                         "alert")]
                 continue
-            if cid not in self.modules:
-                continue
-            for ev in self.modules[cid].update(fm):
-                with self.lock:
-                    self.reports += 1
-                emit(ev, self.events_out)
+            for mod in self.modules[cid]:
+                for ev in mod.update(fm):
+                    with self.lock:
+                        self.reports += 1
+                    emit(ev, self.events_out)
             if self.draw:
-                shapes[cid] = self.modules[cid].draw()
+                shapes[cid] = [s for mod in self.modules[cid] for s in mod.draw()]
         return shapes
 
     def stats(self):
@@ -113,18 +115,18 @@ class Engine:
                 self.t_stats = now
         n = len(frames)
         if t0 is None:
-            log.info("thống kê: %d camera | chưa có frame nào (đang khởi động / dựng engine / chờ camera) | báo cáo %d",
+            log.info("thống kê: %d camera | chưa có frame nào (đang khởi động / dựng engine / chờ camera) | event %d",
                      n, reports)
             return
         dt = max(now - t0, 1e-9)
         total, idle = sum(frames.values()), [c for c, v in frames.items() if v == 0]
         lo, hi = min(frames, key=frames.get), max(frames, key=frames.get)
         log.info("thống kê %.0fs: %d camera | %d camera không có frame%s | %d frame | fps/camera thấp nhất %.1f (%s), "
-                 "cao nhất %.1f (%s) | báo cáo %d | lỗi tỉ lệ khung %d", dt, n, len(idle), f" {idle}" if idle else "",
+                 "cao nhất %.1f (%s) | event %d | lỗi tỉ lệ khung %d", dt, n, len(idle), f" {idle}" if idle else "",
                  total, frames[lo] / dt, lo, frames[hi] / dt, hi, reports, len(self.bad_aspect))
 
     def finish(self):
-        for mod in self.modules.values():
+        for mod in (m for mods in self.modules.values() for m in mods):
             for ev in mod.flush():
                 with self.lock:
                     self.reports += 1
