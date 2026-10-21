@@ -167,3 +167,14 @@ def test_d9_config_dam_dong_sai_bi_bat():
     assert any("zones[1].params.hold_sec: thiếu" in x for x in e) and any("zones[1].params.min_people = '6'" in x for x in e), e
     e = errs({"zones": zones["zones"][:1]})
     assert any("cam_a: bật crowd nhưng chưa có vùng crowd nào" in x for x in e), e
+
+def test_d10_canh_bao_khong_tat_bang_chinh_du_lieu_vua_bat_no():
+    """Tình huống thật: số người dao động sát ngưỡng; demo 2026-10-21 (park1) có cảnh báo 82.3 -> 86.0 chỉ 3.7 giây:
+    xét "hết" bằng cửa sổ còn chứa nửa phần số thấp từ TRƯỚC lúc báo -> báo rồi tắt ngay.
+    Giả lập: 4 người 10 giây, 6 người 5.5 giây (11/21 mẫu: trung vị vừa chạm ngưỡng 5 -> báo), rồi 4 người 20 giây.
+    Đỏ thì hỏng gì: người quản lý nhận chuỗi "đông / hết đông" vài giây một lần, không tin cảnh báo nữa.
+    """
+    mod = CrowdModule("cam_a", [zone()])
+    ev = run(mod, lambda t: people(4), 0, 10) + run(mod, lambda t: people(6), 10, 5.5) + run(mod, lambda t: people(4), 15.5, 20)
+    assert [e["event_type"] for e in ev] == ["alert_start", "alert_end"]
+    assert ev[1]["ts"] - ev[0]["ts"] >= 10  # cảnh báo kéo dài ít nhất clear_sec: "hết" chỉ xét dữ liệu từ sau lúc báo
