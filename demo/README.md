@@ -11,7 +11,7 @@ Model tự tải vào `demo/models/` lần đầu (YOLO26n dùng `people_count/m
 ## Chạy (từ thư mục `AI_park`)
 ```bash
 conda activate yoloe
-python demo/run_demo.py people_count/videos/park1.mp4=count,crowd ~/bang_ron/co/bieutinh.mp4=bang_ron
+python demo/run_demo.py people_count/videos/park1.mp4=count,crowd ~/bang_ron/co/bieutinh.mp4=bang_ron ~/via_he/via_he.mp4=lan_chiem
 python demo/run_demo.py CAM_01_URL=count,crowd --sec 120 --show      # camera: tên biến trong people_count/.env
 python demo/run_demo.py -h                                            # mọi tuỳ chọn
 ```
@@ -20,6 +20,7 @@ python demo/run_demo.py -h                                            # mọi tu
 | `count` | đếm người / chó / mèo trong khung, báo cáo trung vị / max | `--report-sec 30` |
 | `crowd` | số người >= ngưỡng, quá nửa thời gian `--hold` giây -> cảnh báo | `--min-people 5 --hold 10` |
 | `bang_ron` | băng rôn đang được người cầm (băng rôn treo cao không tính), quá nửa thời gian `--hold` giây -> cảnh báo | `--banner-conf 0.3 --hold 10` |
+| `lan_chiem` | xe máy / ô tô / ghế / bàn / ô dù / xe đẩy / gánh / sạp **đứng yên trùng chỗ** quá nửa thời gian `--dwell` giây -> cảnh báo kèm danh sách vật. Lớp + nguồn (COCO / YOLOE) lấy từ `dataset/classes.yaml`. **Cần camera đứng yên** | `--dwell 60` |
 
 Ra: `demo/out/<giờ chạy>/<nguồn>.avi` (VLC) + `events.jsonl`; cảnh báo in ngay lúc chạy; cuối cùng in bảng tóm tắt.
 Ctrl+C: dừng gọn nguồn đang chạy (file vẫn xem được), bỏ các nguồn còn lại. `--fps 5`: chạy nhanh hơn, video giật hơn.
