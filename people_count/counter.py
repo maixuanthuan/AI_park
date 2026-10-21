@@ -6,6 +6,7 @@ max giữ đỉnh. Không dùng track_id: đếm hiện diện không có khái 
 """
 import statistics
 
+from meta import Line, Text
 from zones import anchor, contains
 
 
@@ -45,6 +46,7 @@ class CountModule:
         self.classes = tuple(classes)
         self.zones = [z for z in zones if z["cam_id"] == cam_id and z["function"] == "count"]
         self.win = {z["zone_id"]: _Window(self.classes) for z in self.zones}
+        self.live = {}  # zone_id -> số đếm frame gần nhất; chỉ để vẽ (draw), không ảnh hưởng báo cáo
 
     def update(self, meta):
         """meta: FrameMeta của camera này. Trả về danh sách báo cáo (thường rỗng)."""
@@ -62,6 +64,7 @@ class CountModule:
                 if contains(z["polygon"], x, y):
                     n[cls] += 1
             w.add(meta.ts, n)
+            self.live[z["zone_id"]] = n
             if meta.ts - w.start >= report_sec:
                 events.append(self._report(z, w))
         return events
@@ -69,6 +72,19 @@ class CountModule:
     def flush(self):
         """Dừng chương trình / hết video: báo cáo phần cửa sổ còn dở (có trường frames để biết nó ngắn)."""
         return [self._report(z, self.win[z["zone_id"]]) for z in self.zones if self.win[z["zone_id"]].last is not None]
+
+    def draw(self):
+        """Vẽ gì lên video debug / demo: viền vùng + số HIỆN DIỆN của frame đang hiện, để người xem đếm khung trên hình
+        mà đối chiếu. Không vẽ trung vị báo cáo (Thuận chốt 2026-10-21): số đó nằm trong file event .jsonl."""
+        out = []
+        for z in self.zones:
+            zid, poly = z["zone_id"], z["polygon"]
+            out += [Line(*poly[i], *poly[(i + 1) % len(poly)], "zone") for i in range(len(poly))]
+            x, y = min(p[0] for p in poly), min(p[1] for p in poly)  # góc trên trái khung bao của vùng
+            live = self.live.get(zid)
+            now = ", ".join(f"{c} {live[c]}" for c in self.classes) if live else "-"
+            out.append(Text(x, y, 0, f"{zid} | hien tai: {now}", "info"))
+        return out
 
     def _report(self, z, w):
         payload = w.close()

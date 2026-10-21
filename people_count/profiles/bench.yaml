@@ -1,0 +1,31 @@
+# Profile THÍ NGHIỆM đo tải (tools/bench.sh). Giống overview.yaml, chỉ khác stats_sec. Không dùng cho vận hành.
+# Thử ngưỡng khác thì dùng cả một file cấu hình khác, không sửa bản chuẩn (CACH_LAM_VIEC mục 5.5).
+stats_sec: 30             # THÍ NGHIỆM: 30s 1 dòng thống kê để đo nhanh (bản chuẩn overview.yaml: 600)
+pgie_config: nvinfer_yolo26n.txt   # config model (nvinfer), đường dẫn tính từ thư mục profiles/
+
+mux:
+  # mọi camera được co / giãn về khung này trước khi vào model. Không đệm viền (enable-padding=0) nên toạ độ
+  # tỉ lệ 0..1 vẫn đúng theo khung gốc của từng camera, kể cả camera khác tỉ lệ khung.
+  width: 1920
+  height: 1080
+  batched_push_timeout_us: 40000   # chờ tối đa 40ms để gom đủ 1 batch; camera chậm không giữ chân camera khác lâu hơn. Chưa đo.
+
+tracker:
+  # Đếm hiện diện không dùng track_id; bật để đo chi phí + độ ổn định ID sớm (phóng uế chạy cùng profile sẽ cần).
+  # NvSORT: nhẹ, chỉ dựa vị trí khung, không cần model ReID. Chưa đo CPU khi bật / tắt.
+  enable: true
+  config: /opt/nvidia/deepstream/deepstream/samples/configs/deepstream-app/config_tracker_NvSORT.yml
+  width: 640
+  height: 384
+
+rtsp:
+  reconnect_sec: 10    # quá 10s không có dữ liệu thì nvurisrcbin kết nối lại (rtsp-reconnect-interval). Đo 2026-10-20, 24 camera,
+                       # relay đứng 15s: 2s -> 20/24 camera kẹt vĩnh viễn; 5s, 10s -> 24/24 có lại, cùng tổng thời gian (~90s,
+                       # hồi phục tuần tự ~3s/camera). Chọn 10: xa vùng kẹt (interval <= thời gian 1 lần nối lại ~2-3s), không tốn thêm.
+  latency_ms: 200      # bộ đệm RTSP. Chưa đo trên camera thật.
+
+count:
+  classes: [person, dog, cat]   # phải có trong labels của model; model cũng chỉ giữ 3 lớp này (filter-out-class-ids)
+
+zones:
+  aspect_tol: 0.02     # tỉ lệ khung luồng đang đọc lệch ref_size của vùng quá 2% -> báo lỗi, không đếm camera đó

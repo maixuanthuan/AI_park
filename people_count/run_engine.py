@@ -24,6 +24,7 @@ from dotenv import load_dotenv  # noqa: E402
 from config import validate_all  # noqa: E402
 from counter import CountModule  # noqa: E402
 from events import envelope  # noqa: E402
+from meta import Text  # noqa: E402
 from zones import aspect_ok  # noqa: E402
 
 PROFILE = "overview"
@@ -40,16 +41,22 @@ def _load(path):
         return yaml.safe_load(f)
 
 
-def emit(ev):
-    log.info(json.dumps(envelope(ev, str(uuid.uuid4())), ensure_ascii=False))
+def emit(ev, events_out=None):
+    line = json.dumps(envelope(ev, str(uuid.uuid4())), ensure_ascii=False)
+    log.info(line)
+    if events_out is not None:  # chỉ khi --debug-out: cùng dòng JSON, 1 event / dòng, để làm bảng event cho demo
+        events_out.write(line + "\n")
+        events_out.flush()  # bị cắt ngang (docker stop) vẫn còn đủ tới event cuối, như mkv
     # TODO: đẩy event sang backend khi chốt kênh (KIEN_TRUC mục 8)
 
 
 class Engine:
     """Nhận FrameMeta từ pipeline, chia cho module của từng camera, đếm số cho dòng thống kê."""
 
-    def __init__(self, cams, zones, prof, clock=time.time):
+    def __init__(self, cams, zones, prof, clock=time.time, draw=False, events_out=None):
         self.prof = prof
+        self.draw = draw  # True khi --debug-out: on_frames trả về "vẽ gì"; False = lõi y nguyên, trả về {}
+        self.events_out = events_out
         self.clock = clock  # truyền vào để test chỉnh được giờ
         self.zones = {c["cam_id"]: [z for z in zones if z["cam_id"] == c["cam_id"]] for c in cams}
         self.modules = {c["cam_id"]: CountModule(c["cam_id"], self.zones[c["cam_id"]], prof["count"]["classes"])
@@ -63,6 +70,8 @@ class Engine:
         self.lock = threading.Lock()  # on_frames chạy trên luồng của DeepStream, stats chạy trên luồng chính
 
     def on_frames(self, frames):
+        """Trả về {cam_id: [Line | Text]} để pipeline vẽ lên video debug; rỗng khi draw=False."""
+        shapes = {}
         for fm in frames:
             cid = fm.cam_id
             with self.lock:
@@ -79,12 +88,20 @@ class Engine:
                               "(sửa link sang luồng đúng tỉ lệ, hoặc vẽ lại vùng)", cid, fm.src_w, fm.src_h, bad)
                 else:
                     log.info("%s: có hình %dx%d, %d vùng", cid, fm.src_w, fm.src_h, len(self.zones[cid]))
-            if cid in self.bad_aspect or cid not in self.modules:
+            if cid in self.bad_aspect:
+                if self.draw:
+                    shapes[cid] = [Text(0.0, 0.0, 0, f"{cid}: stream {fm.src_w}x{fm.src_h} khac ti le vung -> KHONG dem",
+                                        "alert")]
+                continue
+            if cid not in self.modules:
                 continue
             for ev in self.modules[cid].update(fm):
                 with self.lock:
                     self.reports += 1
-                emit(ev)
+                emit(ev, self.events_out)
+            if self.draw:
+                shapes[cid] = self.modules[cid].draw()
+        return shapes
 
     def stats(self):
         """Một dòng, in cả khi mọi số bằng 0: thấy đều đặn = hệ còn sống."""
@@ -111,7 +128,7 @@ class Engine:
             for ev in mod.flush():
                 with self.lock:
                     self.reports += 1
-                emit(ev)
+                emit(ev, self.events_out)
 
 
 def main(argv=None):
@@ -165,12 +182,16 @@ def main(argv=None):
 
     from pipeline import Pipeline  # import muộn: kiểm config không cần DeepStream
 
-    engine = Engine(cams, zones_cfg["zones"], prof)
+    # bảng event cho demo: cạnh file video debug, cùng tên, đuôi .jsonl
+    events_out = open(debug_out[:-len(".mkv")] + ".jsonl", "w", encoding="utf-8") if debug_out else None
+    engine = Engine(cams, zones_cfg["zones"], prof, draw=bool(debug_out), events_out=events_out)
     pipe = Pipeline(srcs, prof, os.path.join(profile_dir, prof["pgie_config"]), engine_file,
                     engine.on_frames, debug_out)
     fatal = pipe.run(prof["stats_sec"], engine.stats)
     engine.finish()
     engine.stats()
+    if events_out is not None:
+        events_out.close()
     return 1 if fatal else 0
 
 

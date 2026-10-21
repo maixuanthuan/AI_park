@@ -7,6 +7,7 @@ Probe KHÔNG kéo ảnh về CPU, chỉ đọc metadata. Logic (vùng, đếm) k
 """
 import logging
 import math
+import os
 import re
 import signal
 import time
@@ -19,13 +20,20 @@ from gi.repository import GLib, Gst  # noqa: E402
 import pyds  # noqa: E402
 
 from common.masking import mask  # noqa: E402
-from meta import FrameMeta, Obj  # noqa: E402
+from meta import FrameMeta, Line, Obj, Text  # noqa: E402
 
 log = logging.getLogger("engine")
 TRACKER_LIB = "/opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so"
 TCP_ONLY = 4  # nvurisrcbin select-rtp-protocol: 4 = chỉ TCP (như -rtsp_transport tcp của camera_tamper)
 _ADDR = re.compile(r"0x[0-9a-fA-F]+")
+DOT_AFTER_SEC = 15  # xuất sơ đồ sau 15s: nạp model ~5s + camera nối xong, các khối con của nvurisrcbin đã được tạo
 GIVE_UP_SEC = 5  # nhận lệnh dừng mà pipeline chưa kết thúc sau 5s thì dừng hẳn; phải < 10s mặc định của docker stop
+# Vẽ video debug / demo (--debug-out): toạ độ theo khung mux, tiler tự co theo ô. Chưa kiểm cỡ chữ trên video thật.
+MAX_ELEMS = 16  # mỗi display meta chứa tối đa 16 đường / 16 chữ (MAX_ELEMENTS_IN_DISPLAY_META của DeepStream)
+FONT_SIZE = 20
+ROW_PX = 36  # khoảng cách 2 dòng chữ, pixel trên VIDEO RA. Tiler co vị trí theo ô nhưng KHÔNG co cỡ chữ (thấy 2026-10-21:
+             # 40px khung mux co còn 20px, 2 dòng chữ 20pt đè nhau) -> nhân lại theo hệ số co, xem self.row_px
+COLORS = {"zone": (1.0, 0.85, 0.0, 1.0), "info": (1.0, 1.0, 1.0, 1.0), "alert": (1.0, 0.2, 0.2, 1.0)}  # RGBA 0..1
 
 
 def _make(factory, name, **props):
@@ -42,7 +50,8 @@ def _clamp(v):
 
 
 class Pipeline:
-    """cams: [{"cam_id", "uri", "live"}]; prof: profile đã kiểm; on_frames(list[FrameMeta]) gọi trong probe."""
+    """cams: [{"cam_id", "uri", "live"}]; prof: profile đã kiểm; on_frames(list[FrameMeta]) gọi trong probe,
+    trả về {cam_id: [Line | Text]} để vẽ (chỉ dùng khi có debug_out)."""
 
     def __init__(self, cams, prof, pgie_config, engine_file, on_frames, debug_out=None):
         Gst.init(None)
@@ -50,6 +59,8 @@ class Pipeline:
         self.w, self.h = prof["mux"]["width"], prof["mux"]["height"]
         self.tracking = prof["tracker"]["enable"]
         self.reconnect_sec = prof["rtsp"]["reconnect_sec"]
+        self.debug = bool(debug_out)
+        self.row_px = ROW_PX
         self.stopping = False
         self.down = {}  # cam_id -> các lý do mất kết nối đã in trong sự cố đang diễn ra
         self.seen = set()  # camera đã có ít nhất 1 frame (trước đó: "đang chờ hình đầu tiên", không phải "mất kết nối")
@@ -71,9 +82,13 @@ class Pipeline:
         probe_at = chain[-1]
 
         if debug_out:  # phần phụ cho dev xem bằng mắt: mặc định tắt, bỏ đi thì lõi vẫn chạy y nguyên
-            rows = int(math.ceil(math.sqrt(n)))
-            chain += [_make("nvmultistreamtiler", "tiler", rows=rows, columns=int(math.ceil(n / rows)),
-                            width=self.w, height=self.h),
+            # lưới theo CỘT trước, cao khung ra theo số hàng: mỗi ô = khung mux co đều 1/cols, giữ tỉ lệ khung.
+            # Bản cũ để khung ra cố định = khung mux: 2 camera -> 2 hàng x 1 cột, ô 1920x540 (32:9), hình bẹp (thấy 2026-10-21).
+            cols = int(math.ceil(math.sqrt(n)))
+            rows = int(math.ceil(n / cols))
+            self.row_px = ROW_PX * cols  # toạ độ vẽ theo khung mux, tiler co 1/cols -> trên video ra còn đúng ROW_PX
+            chain += [_make("nvmultistreamtiler", "tiler", rows=rows, columns=cols,
+                            width=self.w, height=int(round(self.h * rows / cols / 2)) * 2),
                       _make("nvvideoconvert", "conv1"), _make("nvdsosd", "osd"), _make("nvvideoconvert", "conv2"),
                       _make("capsfilter", "caps",
                             caps=Gst.Caps.from_string("video/x-raw(memory:NVMM), format=I420")),
@@ -119,6 +134,8 @@ class Pipeline:
             signal.signal(sig, signal.SIG_DFL)
             GLib.unix_signal_add(GLib.PRIORITY_HIGH, sig, self._on_signal, sig)
         self.pipe.set_state(Gst.State.PLAYING)
+        if os.environ.get("GST_DEBUG_DUMP_DOT_DIR"):  # công cụ cho dev nhìn pipeline thật, mặc định tắt
+            GLib.timeout_add_seconds(DOT_AFTER_SEC, self._dump_dot)
         try:
             self.loop.run()
         finally:
@@ -140,6 +157,13 @@ class Pipeline:
             pad.send_event(Gst.Event.new_eos())
         GLib.timeout_add_seconds(GIVE_UP_SEC, self._give_up)
         return True
+
+    def _dump_dot(self):
+        """Ghi sơ đồ pipeline đang chạy (mọi khối, kể cả khối con tự sinh bên trong bin, kèm caps trên từng liên kết)
+        ra GST_DEBUG_DUMP_DOT_DIR/pipeline.dot. Ứng dụng tự viết phải tự gọi; chỉ gst-launch mới tự xuất."""
+        Gst.debug_bin_to_dot_file(self.pipe, Gst.DebugGraphDetails.ALL, "pipeline")
+        log.info("đã xuất sơ đồ pipeline: %s/pipeline.dot", os.environ["GST_DEBUG_DUMP_DOT_DIR"])
+        return False
 
     def _give_up(self):
         log.warning("pipeline không kết thúc trong %ds sau lệnh dừng, dừng hẳn", GIVE_UP_SEC)
@@ -204,11 +228,12 @@ class Pipeline:
     def _probe(self, _pad, info, _):
         try:
             batch = pyds.gst_buffer_get_nvds_batch_meta(hash(info.get_buffer()))
-            frames = []
+            frames, metas = [], {}  # metas: cam_id -> NvDsFrameMeta, để gắn hình vẽ đúng frame
             l_frame = batch.frame_meta_list
             while l_frame is not None:
                 f = pyds.NvDsFrameMeta.cast(l_frame.data)
                 cam = self.cams[f.source_id]
+                metas[cam["cam_id"]] = f
                 if cam["cam_id"] in self.down:
                     del self.down[cam["cam_id"]]
                     if cam["cam_id"] in self.seen:  # lần đầu có hình thì run_engine in "có hình WxH", không in ở đây
@@ -228,10 +253,41 @@ class Pipeline:
                 ts = time.time() if cam["live"] else f.buf_pts / 1e9
                 frames.append(FrameMeta(cam["cam_id"], ts, f.source_frame_width, f.source_frame_height, tuple(objs)))
                 l_frame = l_frame.next
-            self.on_frames(frames)
+            shapes = self.on_frames(frames)
+            if self.debug:
+                for cid, items in shapes.items():
+                    self._draw(batch, metas[cid], items)
         except Exception:
             # lỗi code = hệ hỏng, không phải đầu vào xấu: dừng toàn bộ, mã 1 (như camera_tamper)
             log.exception("lỗi code khi xử lý metadata, dừng toàn bộ chương trình (mã 1)")
             self.fatal = True
             self.stop()
         return Gst.PadProbeReturn.OK
+
+    def _draw(self, batch, frame_meta, items):
+        """Line / Text (tỉ lệ 0..1) -> display meta để nvdsosd vẽ cùng bbox. Chỉ chạy khi có --debug-out."""
+        lines = [i for i in items if isinstance(i, Line)]
+        texts = [i for i in items if isinstance(i, Text)]
+        px = lambda v, size: int(min(max(v, 0.0), 1.0) * (size - 1))  # noqa: E731  kẹp trong khung, không lệch 1 pixel
+        for k in range(0, max(len(lines), len(texts)), MAX_ELEMS):
+            dm = pyds.nvds_acquire_display_meta_from_pool(batch)
+            part = lines[k:k + MAX_ELEMS]
+            dm.num_lines = len(part)
+            for j, ln in enumerate(part):
+                p = dm.line_params[j]
+                p.x1, p.y1, p.x2, p.y2 = px(ln.x1, self.w), px(ln.y1, self.h), px(ln.x2, self.w), px(ln.y2, self.h)
+                p.line_width = 3
+                p.line_color.set(*COLORS[ln.kind])
+            part = texts[k:k + MAX_ELEMS]
+            dm.num_labels = len(part)
+            for j, t in enumerate(part):
+                p = dm.text_params[j]
+                p.display_text = t.text
+                p.x_offset = px(t.x, self.w) + 8
+                p.y_offset = px(t.y, self.h) + 8 + t.row * self.row_px
+                p.font_params.font_name = "Serif"
+                p.font_params.font_size = FONT_SIZE
+                p.font_params.font_color.set(*COLORS[t.kind])
+                p.set_bg_clr = 1
+                p.text_bg_clr.set(0.0, 0.0, 0.0, 0.6)
+            pyds.nvds_add_display_meta_to_frame(frame_meta, dm)

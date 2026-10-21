@@ -18,3 +18,21 @@ class FrameMeta(NamedTuple):
     src_w: int             # kích thước khung gốc của camera (để kiểm tỉ lệ khung với ref_size của vùng)
     src_h: int
     objects: Tuple[Obj, ...]
+
+
+# Chiều ngược lại, CHỈ cho video debug / demo (--debug-out): module logic nói "vẽ gì", pipeline.py đổi sang
+# display meta của DeepStream. Toạ độ tỉ lệ 0..1 như bbox. kind: "zone" | "info" | "alert" (pipeline chọn màu).
+class Line(NamedTuple):
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    kind: str
+
+
+class Text(NamedTuple):
+    x: float
+    y: float
+    row: int               # dòng thứ mấy tính từ (x, y): pipeline đổi ra pixel theo cỡ chữ
+    text: str              # chỉ ASCII: font trong image chưa kiểm hiển thị tiếng Việt có dấu
+    kind: str

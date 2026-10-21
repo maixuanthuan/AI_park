@@ -26,9 +26,23 @@ docker run --rm --init --gpus all -v ~/PycharmProjects/AI_park:/work aipark-over
 - Camera văn phòng thật: thêm `--cameras cameras.office.yaml --zones zones.office.yaml` (link `CAM_01_URL` trong `.env`).
 - Dừng gọn: `docker stop <tên container>` (SIGTERM, như Docker Compose) hoặc Ctrl+C: gửi báo cáo cửa sổ đang dở, ghi xong file debug,
   tối đa 5s. Cần `docker run --init` và image có entrypoint riêng (Dockerfile) để tín hiệu tới thẳng python.
-- `--debug-out out/x.mkv`: ghi video có vẽ khung để xem bằng mắt (chỉ để dev, mặc định tắt). Bắt buộc `.mkv`: bị cắt ngang vẫn xem được.
+- `--debug-out out/x.mkv`: video DEMO / debug (mặc định tắt): khung đối tượng, viền vùng, số **hiện diện** của frame đang hiện
+  (đếm khung trên hình để đối chiếu); kèm `out/x.jsonl` = mọi event (báo cáo trung vị / max), 1 dòng JSON / event.
+  Bắt buộc `.mkv`: bị cắt ngang vẫn xem được. Xem: `vlc out/x.mkv`.
 - Engine `models/model_b<N>_gpu0_fp16.engine` theo số camera N: lần đầu dựng 1-3 phút, các lần sau nạp ngay.
 - File do container tạo thuộc root: `sudo chown -R $USER:$USER people_count/models people_count/out`.
+
+## Đo tải nhiều camera (`tools/bench.sh`)
+```bash
+people_count/tools/bench.sh 1 4 8 16 24 32                                          # nguồn: camera văn phòng (CAM_01_URL)
+BENCH_SOURCE=people_count/videos/park_dong.mp4 people_count/tools/bench.sh 16          # nguồn: file, phát lặp đúng thời gian thực
+BENCH_MEASURE=36000 people_count/tools/bench.sh 24                                   # chạy lâu (soak test) 10 giờ
+```
+Nguồn -> MediaMTX (relay `rtsp://127.0.0.1:8554/cam`, `--network host`, cổng 8554; camera kéo bằng TCP; file phát bằng ffmpeg
+`-re -c copy`) -> nhân thành N "camera" (`profiles/bench.yaml`: như bản chuẩn, thống kê mỗi 30s). Mỗi N chờ đủ hình rồi đo:
+fps thấp nhất / cao nhất qua mọi dòng thống kê, GPU `sm` / `dec` trung bình, VRAM 10s đầu / 10s cuối, RAM python đầu / cuối
++ độ dốc RAM MB/giờ (`ram.tsv` mỗi 60s, hồi quy nửa sau; dương đều = rò bộ nhớ), CPU (% 1 nhân, 30s đầu), số lần mất kết nối. Kết quả: `out/bench/<nguồn>/ketqua.tsv`.
+Lần đầu mỗi N dựng engine batch N (~4-5 phút). Engine chết thì dừng dãy và in 10 dòng log cuối.
 
 ## Đọc log
 | Dòng log | Nghĩa | Làm gì |
