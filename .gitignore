@@ -17,5 +17,6 @@ __pycache__/
 *.onnx
 *.engine
 *.so
-# Video debug của engine
+# Video debug của engine, kết quả demo
 people_count/out/
+demo/out/

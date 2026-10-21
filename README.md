@@ -16,6 +16,9 @@ Các bài toán AI cho hệ thống camera giám sát công viên. Mỗi bài to
 
 Hệ thống AI chỉ **phát hiện và phát sự kiện**. Người quản lý xem hình qua đầu ghi / phần mềm camera như bình thường; backend nhận sự kiện để thông báo.
 
+## Demo cho khách (PoC)
+[`demo/`](demo/): mỗi video / camera gán chức năng riêng (`count`, `crowd`, `bang_ron`), ra video đã vẽ + event. Ultralytics Python thuần, dùng lại logic của `people_count`.
+
 ## Cấu trúc
 
 ```
