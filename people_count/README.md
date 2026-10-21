@@ -1,6 +1,7 @@
 # people_count — engine `overview`, module đếm hiện diện
 
 Đếm số **người, chó, mèo đang ở trong từng vùng** của mỗi camera, gửi báo cáo định kỳ (trung vị + max theo lớp).
+Module **đám đông** (`crowd`) trên cùng engine: số người trong vùng >= `min_people` giữ đủ lâu -> `alert_start`, hết đông -> `alert_end`.
 Mọi camera profile `overview` chạy trong **1 pipeline DeepStream** (1 model dùng chung, batch = số camera).
 Kiến trúc chung: `docs/KIEN_TRUC.md` (Project "AI in town park").
 
@@ -48,6 +49,7 @@ Lần đầu mỗi N dựng engine batch N (~4-5 phút). Engine chết thì dừ
 | Dòng log | Nghĩa | Làm gì |
 |---|---|---|
 | `INFO {"schema_version": ..., "event_type": "report", "function": "count", ...}` | **Event** báo cáo đếm của 1 vùng | Dữ liệu nghiệp vụ, sau này đẩy sang backend |
+| `INFO {..., "event_type": "alert_start" / "alert_end", "function": "crowd", ...}` | **Event** đám đông bắt đầu / hết ở 1 vùng (trung vị số người `hold_sec` / `clear_sec` giây gần nhất so với `min_people`) | Dữ liệu nghiệp vụ, sau này đẩy sang backend |
 | `INFO thống kê 600s: 3 camera \| 0 camera không có frame \| ... \| fps/camera thấp nhất 24.9 (cam_x), cao nhất 25.1 (cam_y) \| ...` | In đều mỗi `stats_sec`, **kể cả khi bằng 0**; đo từ frame đầu tiên (không tính lúc dựng engine) | Ngừng xuất hiện = treo. `camera không có frame [...]` hoặc fps thấp nhất tụt = camera / mạng (**devops**) |
 | `INFO thống kê: 3 camera \| chưa có frame nào ...` | Đang khởi động / dựng engine / chưa camera nào lên | Kéo dài quá vài phút = xem dòng mất kết nối |
 | `INFO cam_x: có hình 1920x1080, 2 vùng` | Frame đầu tiên của camera, tỉ lệ khung khớp vùng | |

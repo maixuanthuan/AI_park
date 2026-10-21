@@ -15,7 +15,7 @@ def test_r1_logic_khong_dinh_deepstream():
     Đỏ thì hỏng gì: logic dính DeepStream -> đổi phiên bản phải sửa cả logic; test logic đòi GPU (KIEN_TRUC mục 3.4).
     """
     code = ("import sys; sys.path[:0] = [%r, %r]; "
-            "import meta, zones, counter, config, events; "
+            "import meta, zones, counter, crowd, config, events; "
             "bad = [m for m in ('gi', 'pyds') if m in sys.modules]; print(','.join(bad))") % (ROOT, os.path.dirname(ROOT))
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout.strip()
     assert out == "", f"phần logic đã nạp: {out}"

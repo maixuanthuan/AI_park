@@ -5,7 +5,7 @@
 #   url_env   tên biến trong .env chứa link camera (link có user/pass không bao giờ ghi ở đây)
 #   url       CHỈ dùng cho file video thử, đường dẫn tính từ thư mục people_count
 #   profile   overview | face | plate
-#   functions chức năng bật cho camera này, phải thuộc profile (overview: count)
+#   functions chức năng bật cho camera này, phải thuộc profile (overview: count, crowd)
 cameras:
   - cam_id: test-park1-2min        # video thử; camera thật dùng UUID
     name: "Video thử: đường phố 2 phút"
@@ -16,7 +16,7 @@ cameras:
     name: "Video thử: phóng sự công viên 11 phút"
     url: videos/park1.mp4
     profile: overview
-    functions: [count]
+    functions: [count, crowd]      # park1: ~6 phút đầu đông (trung vị 4-8 người), sau đó vắng -> thấy cả bắt đầu lẫn hết
   # camera thật:
   # - cam_id: 3f2a9c1e-7b4d-4e1a-9c2f-1a2b3c4d5e6f
   #   name: "Khu vui chơi trẻ em"
