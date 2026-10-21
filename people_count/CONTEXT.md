@@ -6,22 +6,25 @@ Cập nhật: 2026-10-21. Cách làm việc: `docs/CACH_LAM_VIEC.md`. Kiến tr�
 
 ## Hệ là gì (một câu)
 Engine `overview` đầu tiên: mọi camera profile `overview` chạy trong **1 pipeline DeepStream** (1 model, batch = số camera);
-module `count` đếm **hiện diện** (bao nhiêu người, chó, mèo đang ở trong từng vùng), báo cáo trung vị + max mỗi `report_sec`.
+module `count` đếm **hiện diện** (bao nhiêu người, chó, mèo đang ở trong từng vùng), báo cáo trung vị + max mỗi `report_sec`;
+module `crowd` báo đám đông (`alert_start` / `alert_end`).
 
 - Bài toán 5/7 của AI_park (GitHub public `maixuanthuan/AI_park`). Dev và chạy trên **host robo**.
 - Module sau (phóng uế, lấn chiếm...) sẽ cắm vào **cùng engine này**: thêm module + config, không dựng pipeline mới.
 
-## Đang ở đâu (2026-10-21)
-- **Engine chạy đúng** trên robo với video và camera văn phòng thật (qua relay nhân bản tới 32 camera). 49 test logic.
-- Dừng gọn bằng SIGTERM / SIGINT (gửi EOS thẳng vào mux), video debug mkv, phân biệt "đang chờ hình đầu tiên" với "mất kết nối".
-- `rtsp.reconnect_sec` = 10 (đo 2026-10-20: 2s kẹt vĩnh viễn, 5s / 10s hồi phục đủ, 10s xa vùng kẹt).
-- `tools/pack.sh` (gốc repo): một lệnh đóng gói, chặn .env và giá trị bí mật (lần nén tay 2026-10-21 lọt 2 file .env).
-- Đã tách `common/` (config_check, masking); camera_tamper 57 test vẫn xanh.
+## Đang ở đâu (2026-10-21 cuối ngày)
+- **Engine chạy đúng** trên robo với video và camera văn phòng thật (qua relay nhân bản tới 32 camera). 64 test logic.
+- Dừng gọn bằng SIGTERM / SIGINT, video debug mkv, `rtsp.reconnect_sec` = 10, `tools/pack.sh` đóng gói chặn .env.
+- **Overlay demo** trên `--debug-out` (phần phụ, mặc định tắt, test O1 khoá lõi y nguyên): viền vùng + số HIỆN DIỆN
+  (`hien tai: person N, ...`) + file event `.jsonl` cạnh mkv; sửa tiler xếp cột trước, ô giữ đúng tỉ lệ (trước đó hình bẹp).
+- **Module `crowd`** (đám đông) trên engine overview: người trong vùng >= `min_people`, trung vị `hold_sec` -> `alert_start`;
+  trung vị `clear_sec` < ngưỡng, CHỈ xét dữ liệu sau lúc báo -> `alert_end`. Engine chạy danh sách module theo `functions`.
+  Dòng thống kê đổi `báo cáo N` -> `event N`. Demo park1: 7 cặp, mọi cặp >= 10 s, đóng cuối 354.8 s.
+- Git: nhánh `poc-overlay` (tách từ `bench-tools`, chưa gộp main).
 
 ## Hướng hiện tại (Thuận chốt 2026-10-21): PoC trước, tối ưu sau
-- Giai đoạn PoC: **vài camera (1-3)**, giải từng bài toán cho chạy đúng và **khách nhìn thấy được** (video có overlay + event).
-- Kiến trúc giữ bản tổng quát (profile, 1 pipeline nhiều camera, module cắm, config, hợp đồng event): lên nhiều camera
-  chỉ chỉnh cấu hình / chia process, không viết lại.
+- Giai đoạn PoC: vài camera, cho khách thấy kết quả. **Luồng việc chính chuyển sang `demo/` + `dataset/`: xem `demo/CONTEXT.md`.**
+- Kiến trúc giữ bản tổng quát; logic (counter, crowd) không dính DeepStream nên demo ultralytics dùng lại nguyên.
 - **Tối ưu TẠM DỪNG**, không bỏ. Điểm xuất phát khi làm tiếp ở PHẦN 2 mục "Tối ưu: đã đo, việc cất lại".
 
 ## Quyết định quan trọng nhất
@@ -30,8 +33,7 @@ module `count` đếm **hiện diện** (bao nhiêu người, chó, mèo đang �
 2. Đếm **hiện diện** trước. **Đếm lượt** đánh giá khi có camera thật (cần tracking ổn định; nên làm bằng vượt vạch ở cổng).
 
 ## Phiên tới làm gì
-1. Overlay demo trên `--debug-out` (phần phụ, mặc định tắt): vẽ vùng + số đếm / cảnh báo lên video; kèm bảng event.
-2. Bài toán tiếp theo trên engine `overview` (đề xuất: đám đông -> lấn chiếm -> phóng uế; Thuận chốt).
+Theo `demo/CONTEXT.md` (PoC). Engine này chỉ quay lại khi lên DeepStream / nhiều camera, hoặc thêm module vào profile overview.
 
 ---
 
@@ -48,7 +50,8 @@ module `count` đếm **hiện diện** (bao nhiêu người, chó, mèo đang �
 | `pipeline.py` | **duy nhất import Gst/pyds**: `nvurisrcbin` x N -> `nvstreammux` -> `nvinfer` -> `nvtracker` -> probe -> fakesink / (`--debug-out`) tiler-osd-mkv |
 | `meta.py` | `FrameMeta(cam_id, ts, src_w, src_h, objects)`, `Obj(cls, conf, bbox tỉ lệ, track_id)` |
 | `zones.py` | kiểm zones.yaml, `anchor` (giữa cạnh đáy), `contains` (trên vạch = trong), `aspect_ok` |
-| `counter.py` | `CountModule.update(meta) -> [báo cáo]`, `flush()` |
+| `counter.py` | `CountModule.update(meta) -> [báo cáo]`, `flush()`, `draw()` (vẽ debug) |
+| `crowd.py` | `CrowdModule`: đám đông theo trung vị cửa sổ trượt, `alert_start` / `alert_end`, `draw()` |
 | `config.py` | kiểm cameras / zones / profile, mọi lỗi một lượt; `PROFILES` = module mỗi profile đã có |
 | `events.py` | envelope event bản 0.1 |
 | `Dockerfile` | `aipark-overview:7.0` = DeepStream 7.0 + pyds 1.1.11 + parser DeepStream-Yolo build trong image |
