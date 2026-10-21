@@ -1,6 +1,6 @@
 # CONTEXT — people_count (engine `overview`, đếm người / chó / mèo trong vùng)
 
-Cập nhật: 2026-10-19. Cách làm việc: `docs/CACH_LAM_VIEC.md`. Kiến trúc cả hệ: `docs/KIEN_TRUC.md` (Project "AI in town park").
+Cập nhật: 2026-10-21. Cách làm việc: `docs/CACH_LAM_VIEC.md`. Kiến trúc cả hệ: `docs/KIEN_TRUC.md` (Project "AI in town park").
 
 # PHẦN 1 — ĐỌC HẾT MỖI PHIÊN
 
@@ -11,16 +11,18 @@ module `count` đếm **hiện diện** (bao nhiêu người, chó, mèo đang �
 - Bài toán 5/7 của AI_park (GitHub public `maixuanthuan/AI_park`). Dev và chạy trên **host robo**.
 - Module sau (phóng uế, lấn chiếm...) sẽ cắm vào **cùng engine này**: thêm module + config, không dựng pipeline mới.
 
-## Đang ở đâu
-- **Engine chạy được trên robo** (2026-10-19, 2 video, mã thoát 0, đủ 20740 frame). 43 test logic.
-- **Đã đo: nút cổ chai là GIẢI MÃ (NVDEC 100%)**, không phải model (sm ~80%) hay CPU (~2% 1 nhân / camera 30 FPS).
-- Gói v2 (2026-10-19): sửa 3 lỗi lộ ra khi chạy thật (median luôn float, thống kê đo từ frame đầu + fps từng camera, đếm cả báo cáo lúc dừng), config camera văn phòng.
-- Gói v3 (2026-10-19): **dừng gọn bằng SIGTERM / SIGINT** (trước đó lệnh dừng không tới được python), video debug **mkv**. 48 test.
-- **Camera văn phòng thật (2026-10-19, ~5 phút, `office2`)**: kết nối, nhận diện (khung `person 1` bám đúng người), báo cáo 30s đều,
-  rút dây -> tự kết nối lại, cửa sổ đóng đúng chỗ mất hình, mkv đọc đủ 5010 frame. Còn 2 lỗi -> gói v4 (chờ thử):
-  dừng bằng SIGTERM với RTSP phải chờ 5s rồi bỏ (EOS bị nvurisrcbin nuốt); báo nhầm "mất kết nối" lúc khởi động.
-- Đã tách `common/` (config_check, masking); camera_tamper đổi import, 57 test vẫn xanh.
-- **Chưa commit** `people_count/`, `common/`.
+## Đang ở đâu (2026-10-21)
+- **Engine chạy đúng** trên robo với video và camera văn phòng thật (qua relay nhân bản tới 32 camera). 49 test logic.
+- Dừng gọn bằng SIGTERM / SIGINT (gửi EOS thẳng vào mux), video debug mkv, phân biệt "đang chờ hình đầu tiên" với "mất kết nối".
+- `rtsp.reconnect_sec` = 10 (đo 2026-10-20: 2s kẹt vĩnh viễn, 5s / 10s hồi phục đủ, 10s xa vùng kẹt).
+- `tools/pack.sh` (gốc repo): một lệnh đóng gói, chặn .env và giá trị bí mật (lần nén tay 2026-10-21 lọt 2 file .env).
+- Đã tách `common/` (config_check, masking); camera_tamper 57 test vẫn xanh.
+
+## Hướng hiện tại (Thuận chốt 2026-10-21): PoC trước, tối ưu sau
+- Giai đoạn PoC: **vài camera (1-3)**, giải từng bài toán cho chạy đúng và **khách nhìn thấy được** (video có overlay + event).
+- Kiến trúc giữ bản tổng quát (profile, 1 pipeline nhiều camera, module cắm, config, hợp đồng event): lên nhiều camera
+  chỉ chỉnh cấu hình / chia process, không viết lại.
+- **Tối ưu TẠM DỪNG**, không bỏ. Điểm xuất phát khi làm tiếp ở PHẦN 2 mục "Tối ưu: đã đo, việc cất lại".
 
 ## Quyết định quan trọng nhất
 1. Tách **hệ chạy đúng** (kiểm bằng test dữ liệu giả, làm ngay) với **model nhận đúng** (chỉ đo trên camera thật,
@@ -28,8 +30,8 @@ module `count` đếm **hiện diện** (bao nhiêu người, chó, mèo đang �
 2. Đếm **hiện diện** trước. **Đếm lượt** đánh giá khi có camera thật (cần tracking ổn định; nên làm bằng vượt vạch ở cổng).
 
 ## Phiên tới làm gì
-1. Thử gói v4 với camera văn phòng (dừng gọn < 5s, không báo nhầm lúc khởi động). Đạt -> **commit** `common/` + `people_count/` (mốc chạy ổn đầu tiên).
-2. Câu hỏi còn mở: camera 4:3 bị mux 1920x1080 kéo giãn -> model có kém đi không. Nhìn ảnh chưa thấy méo rõ; chỉ kết luận được bằng đếm tay so sánh.
+1. Overlay demo trên `--debug-out` (phần phụ, mặc định tắt): vẽ vùng + số đếm / cảnh báo lên video; kèm bảng event.
+2. Bài toán tiếp theo trên engine `overview` (đề xuất: đám đông -> lấn chiếm -> phóng uế; Thuận chốt).
 
 ---
 
@@ -43,7 +45,7 @@ module `count` đếm **hiện diện** (bao nhiêu người, chó, mèo đang �
 | `profiles/overview.yaml` (dev) | mux, tracker, rtsp, lớp đếm, `aspect_tol`, `stats_sec` |
 | `profiles/nvinfer_yolo26n.txt` | nvinfer: YOLO26n FP16, `cluster-mode=4`, chỉ giữ person/cat/dog, `topk=300`. Đường dẫn tương đối theo file này |
 | `run_engine.py` | kiểm config (mã 2) -> chọn camera overview -> đứng ở `models/` -> dựng pipeline -> chia frame cho module, thống kê |
-| `pipeline.py` | **duy nhất import Gst/pyds**: `nvurisrcbin` x N -> `nvstreammux` -> `nvinfer` -> `nvtracker` -> probe -> fakesink / (`--debug-out`) tiler-osd-mp4 |
+| `pipeline.py` | **duy nhất import Gst/pyds**: `nvurisrcbin` x N -> `nvstreammux` -> `nvinfer` -> `nvtracker` -> probe -> fakesink / (`--debug-out`) tiler-osd-mkv |
 | `meta.py` | `FrameMeta(cam_id, ts, src_w, src_h, objects)`, `Obj(cls, conf, bbox tỉ lệ, track_id)` |
 | `zones.py` | kiểm zones.yaml, `anchor` (giữa cạnh đáy), `contains` (trên vạch = trong), `aspect_ok` |
 | `counter.py` | `CountModule.update(meta) -> [báo cáo]`, `flush()` |
@@ -160,8 +162,60 @@ Thuận muốn tập trung vào pipeline DeepStream ở mức engineer, nghiệp
   mất kết nối 0, relay mất gói 0; RAM python 3620 -> 3671 MB (+51 MB) — CHƯA kết luận: 2 điểm không phân biệt "ấm lên rồi đứng yên"
   với "rò đều 51 MB/h (~1.2 GB/ngày)". -> bench.sh ghi RAM mỗi 60s (`ram.tsv`) + cột `ram_doc_MB/h` (hồi quy nửa sau; kiểm bằng
   dữ liệu mẫu: đứng yên -> 0.0, rò đều 51 -> 51.1).
-- Tiếp: soak qua đêm N=24 10 giờ (`BENCH_MEASURE=36000`, nohup + systemd-inhibit, laptop cắm sạc) -> thí nghiệm C1 `nvinfer interval`.
+- **Soak 8 giờ, N=24 camera văn phòng (2026-10-20 08:06-16:11 giờ VN):** ĐẠT về bộ nhớ: VRAM 2195 -> 2195 MB; RAM python
+  3633 -> 3770 MB nhưng độ dốc nửa sau **0.3 MB/h** (tăng lúc ấm lên rồi đứng yên, không rò). sm 64%, dec 28%, CPU 38% 1 nhân, relay mất gói 0.
+  - **Lỗi công cụ (Claude):** locale tiếng Việt (dấu phẩy thập phân) làm awk coi "27.6" là chữ, so như chữ -> fps_cao_nhat 4.7 (thật 27.6),
+    ram_doc "0,3". Không báo lỗi gì. Tái hiện bằng locale vi_VN dựng tạm (localedef) -> sửa v11: `export LC_ALL=C` đầu bench.sh.
+    Bài học: test công cụ trong môi trường của người chạy, không chỉ của người viết.
+  - **1 sự cố thật lúc 08:55** (camera văn phòng ngừng gửi ~18s; relay `TCP timeout` rồi cắt 24 kết nối) -> **phát hiện quan trọng:
+    nvurisrcbin hồi phục TUẦN TỰ**: cứ ~3s mới "để ý" thêm 1 camera mất hình (thứ tự ngược bench-24 -> bench-01), có lại 2-3s sau khi
+    được thử lại. bench-01 không nhận frame nào 92s (báo cáo đếm thủng 01:55:20 -> 01:56:52 UTC), 74s trong đó camera đã có hình lại.
+    Khung thống kê 01:56:15: 12/24 camera 0 frame. Hệ không chết, không đếm sai (cửa sổ đóng đúng frame cuối), tự lên đủ 24.
+  - **Tái hiện có chủ đích** (`docker pause aipark-relay` 15s, N=24, reconnect 5s, 2026-10-20 16:33): y hệt, nhịp 3s/camera,
+    bench-01 "No data ... since last 92 sec". Thực nghiệm: **mù tối đa ≈ thời gian sự cố + ~3s × số camera trong pipeline**.
+  - Giả thuyết "reconnect chặn GLib main loop" (Claude) **bị bác**: dòng thống kê (timer cùng main loop) vẫn đúng giờ từng ms giữa lúc
+    reconnect. Cơ chế bên trong chưa biết: image 7.0 không có mã nguồn `gstdsnvurisrcbin.cpp`.
+  - **Hướng B (chỉnh tham số) bị loại, nguy hiểm:** reconnect 2s + cùng bài pause -> **20/24 camera KẸT VĨNH VIỄN** (4.5 phút tới hết bài
+    không có lại), chỉ 4 camera được thử lại ở các mốc rời rạc 61/109/124/208s; GPU sm 24%, CPU 160%; 2s còn báo nhầm mất hình lúc
+    đang chạy. Giả thuyết: interval <= thời gian một lần kết nối lại (~2-3s với relay cục bộ) -> watchdog bắn chồng lên lần nối dở -> kẹt.
+    Hệ quả: 5s chỉ dư ~2-3s; camera thật qua switch công viên bắt tay RTSP chậm hơn có thể rơi vào đúng bẫy này. Chưa kiểm.
+  - `gst-inspect-1.0 nvurisrcbin` (cần `--gpus all`): chỉ có `rtsp-reconnect-interval` (mặc định 0 = TẮT reconnect) và
+    `rtsp-reconnect-attempts` (mặc định -1 = vô hạn). Diễn đàn NVIDIA có nhiều báo cáo reconnect kẹt / lặp vô hạn (7.0, 7.1).
+  - **Kết luận:** reconnect có sẵn của nvurisrcbin không đủ tin cho production nhiều camera. Hướng còn lại: A chia nhỏ process (hàng đợi
+    ngắn hơn, cô lập lỗi; tốn VRAM + batch nhỏ), C tự giám sát + tự nối lại từng nguồn (probe đã biết camera nào lâu không có frame), D nâng
+    DeepStream (kiểm V100). Thứ tự định: bàn thiết kế trước, thử reconnect 10s (có an toàn hơn, nhịp 3s có đổi), rồi A/C, đo bằng bài pause.
+  - **Reconnect 10s, cùng bài pause 15s (2026-10-20 17:01): ĐẠT** — 24/24 có hình lại, camera cuối (bench-01) có lại 10:03:18 UTC
+    (79s sau khi thả relay), sau đó cả 24 camera đều 25.0 fps. Nhịp vẫn **3s/camera** như ở 5s -> nhịp do nvurisrcbin quyết định,
+    KHÔNG phụ thuộc interval. Tổng thời gian hồi phục gần như bằng 5s (camera cuối "since last 91s" vs 92s): hàng đợi chiếm phần lớn,
+    nên 10s **không tốn thêm** gì mà xa hẳn vùng kẹt (interval <= thời gian một lần nối lại ~2-3s).
+  - **Yêu cầu của Thuận cho reconnect (2026-10-20, chốt):** (1) 1 camera chết không ảnh hưởng camera khác; (2) KHÔNG cần nhanh:
+    có lại sau vài giây / vài chục giây là được, không lo bỏ lỡ sự kiện lúc nối lại; (3) camera sống lại thì CHẮC CHẮN có hình lại và
+    hoạt động đúng (không kẹt, kể cả mất lâu / nhiều lần). -> Theo yêu cầu 2: **giữ nvurisrcbin, tăng reconnect_sec, KHÔNG viết
+    reconnect riêng (hướng C) và chưa chia process (A)** trừ khi bộ bài kiểm dưới đây trượt.
+  - Bộ bài kiểm reconnect (đề xuất, chưa làm): **K1** chỉ 1/24 camera chết, 23 camera kia giữ ~25 fps (bench cần mỗi camera ảo một path
+    riêng trên relay để cắt từng cái); **K2** cả 24 mất 10 phút rồi có lại -> 24/24; **K3** chập chờn mất/có nhiều lần liên tiếp;
+    **K4** camera chậm (keyframe dài, vd 8s) với reconnect_sec đã chọn. Đạt cả 4 -> giữ nguyên, không thêm code.
+  - Liên hệ thực tế: thời gian một lần nối lại = bắt tay RTSP + chờ keyframe. Camera "smart codec" (H.265+) có thể giãn keyframe 4-10s
+    -> **khoảng cách keyframe** là thông số phải hỏi khi chọn camera công viên (cùng độ phân giải, codec).
+- **[Đã làm 2026-10-21: (1), (2); (3), (4) cất lại — xem "Tối ưu: đã đo, việc cất lại"]** Kế hoạch cũ: (1) đổi `rtsp.reconnect_sec` 5 -> 10 ở `profiles/overview.yaml` VÀ `profiles/bench.yaml` (test K6 bắt
+  hai file giống nhau trừ stats_sec), sửa comment "mỗi 5s"; (2) commit `bench.sh` v11 (LC_ALL=C) + reconnect 10s trên nhánh
+  `bench-tools` -> PR -> merge; (3) làm bộ bài K1-K4; (4) rồi thí nghiệm C1 `nvinfer interval`.
+- Ghi chú vận hành bench: thư mục kết quả cũ cất ở `out/bench/camera_soak8h`, `camera_pause_r5`, `camera_pause_r2` (bài r10 ở `camera`).
+  Dòng `libtinfo.so.6: no version information available` lúc chạy bench là do đường dẫn thư viện conda deepcv còn trong shell: vô hại.
 Dự đoán A1 của Thuận (ghi trước khi đo): nvurisrcbin ~4 khối (đọc luồng, kết nối lại, ghi theo sự kiện, giải mã); toàn pipeline trên GPU, Python chỉ metadata.
+
+## Tối ưu: đã đo, việc cất lại (tạm dừng 2026-10-21, làm tiếp khi dự án lên nhiều camera)
+- Đã có: capacity robo ~32 camera văn phòng (trần model ~800 frame/s); nút cổ chai do loại luồng camera quyết định
+  (H.265 1280x960: model hết trước; 1080p H.264: giải mã hết trước ~25 camera); soak 8h không rò; reconnect tuần tự ~3s/camera.
+- **Mù tối đa sau sự cố ≈ thời gian sự cố + ~3s x số camera trong pipeline** (24 camera: ~90s; 60 camera: ~3 phút, chưa đo).
+  Khi lên nhiều camera phải chốt con số chấp nhận được -> quyết định 1 pipeline hay chia process (hướng A).
+- **Dừng gọn bỏ cuộc 5s khi có camera đang kẹt / chưa lên** (log 2026-10-20: `camera_pause_r2` 20 camera kẹt, `n40` 1 camera
+  không lên; 12 lần còn lại EOS xong trong vài ms). Giả thuyết: pad mux của nguồn đang reconnect ở trạng thái flushing, nuốt EOS.
+  Hậu quả nhỏ: `finish()` vẫn gửi báo cáo cuối, chỉ chậm 5s. Chưa sửa.
+- Việc cất lại: bài kiểm reconnect K1-K4 (cần bench mỗi camera ảo 1 path relay: path `b01..bN` lấy nguồn từ `cam`, xoá / thêm path
+  qua API MediaMTX). Phải thử thêm kiểu hỏng thật: relay tắt (refused), mất mạng (TCP treo tới timeout); có relay hay kéo thẳng
+  camera quyết định kiểu nào là thật (KIEN_TRUC việc mở 5). Thí nghiệm C1 `nvinfer interval`, thí nghiệm giải mã, mux theo tỉ lệ camera.
+- Nhỏ: `ts` camera = `time.time()` (giờ máy): NTP chỉnh giờ giật lùi / nhảy tới thì cửa sổ đếm co giãn sai. Không ảnh hưởng PoC.
 
 ## Việc tiếp theo (theo thứ tự)
 1. **Camera văn phòng thật** (Phiên tới 1-2). Mux theo tỉ lệ camera: thử `mux` 1280x960 vs 1920x1080 trên cùng camera (một biến),

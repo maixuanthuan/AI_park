@@ -19,7 +19,9 @@ tracker:
   height: 384
 
 rtsp:
-  reconnect_sec: 5     # camera rớt: nvurisrcbin thử kết nối lại mỗi 5s (giống reconnect_sec của camera_tamper)
+  reconnect_sec: 10    # quá 10s không có dữ liệu thì nvurisrcbin kết nối lại (rtsp-reconnect-interval). Đo 2026-10-20, 24 camera,
+                       # relay đứng 15s: 2s -> 20/24 camera kẹt vĩnh viễn; 5s, 10s -> 24/24 có lại, cùng tổng thời gian (~90s,
+                       # hồi phục tuần tự ~3s/camera). Chọn 10: xa vùng kẹt (interval <= thời gian 1 lần nối lại ~2-3s), không tốn thêm.
   latency_ms: 200      # bộ đệm RTSP. Chưa đo trên camera thật.
 
 count:

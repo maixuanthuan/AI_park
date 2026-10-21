@@ -39,6 +39,10 @@ Kiến trúc cả hệ (profile, config, vùng, event): `docs/KIEN_TRUC.md` tron
 ## Chạy test
 Mỗi bài toán chạy test **riêng** (hai thư mục có file test trùng tên): `python -m pytest -q camera_tamper/tests`, `python -m pytest -q people_count/tests`.
 
+## Đóng gói gửi đi
+`tools/pack.sh`: một lệnh, lấy file theo git (bỏ mọi thứ `.gitignore` chặn), dừng nếu gói có `.env` hoặc giá trị lấy từ `.env`.
+Không nén tay thư mục (lần nén tay 2026-10-21 lọt link camera có mật khẩu).
+
 ## Bắt đầu
 
 Xem `README.md` trong thư mục của từng bài toán, ví dụ [`camera_tamper/README.md`](camera_tamper/README.md).

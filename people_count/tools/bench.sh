@@ -11,6 +11,9 @@
 # Ghi: people_count/out/bench/<nguồn>/ (log, số đo, ketqua.tsv); engine models/model_b<N>_gpu0_fp16.engine lần đầu mỗi N.
 # Dừng giữa chừng: Ctrl+C (tự dừng engine, relay, ffmpeg phát file).
 set -u
+# Số thập phân luôn dùng dấu chấm. Máy locale tiếng Việt (dấu phẩy) làm awk coi "27.6" là chữ, so như chữ:
+# soak 8 giờ 2026-10-20 ra fps_cao_nhat 4.7 (thật là 27.6) và ram_doc "0,3"; không báo lỗi gì.
+export LC_ALL=C
 HERE=$(cd "$(dirname "$0")/.." && pwd)   # people_count
 ROOT=$(dirname "$HERE")                  # AI_park
 IMAGE=aipark-overview:7.0
