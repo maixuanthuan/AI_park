@@ -19,6 +19,9 @@ Hệ thống AI chỉ **phát hiện và phát sự kiện**. Người quản l�
 ## Demo cho khách (PoC)
 [`demo/`](demo/): mỗi video / camera gán chức năng riêng (`count`, `crowd`, `bang_ron`), ra video đã vẽ + event. Ultralytics Python thuần, dùng lại logic của `people_count`.
 
+## Dữ liệu cho model chung (`overview`)
+[`dataset/`](dataset/): `classes.yaml` = danh sách lớp duy nhất; `nhan_dien.py` = thử nhận diện từng lớp trên clip (COCO vs YOLOE) + gán nhãn tự động chuẩn YOLO để sửa trong CVAT.
+
 ## Cấu trúc
 
 ```

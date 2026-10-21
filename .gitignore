@@ -20,3 +20,6 @@ __pycache__/
 # Video debug của engine, kết quả demo
 people_count/out/
 demo/out/
+dataset/out/
+# model ngôn ngữ của YOLOE, ultralytics tự tải về thư mục đang đứng
+mobileclip*.ts
