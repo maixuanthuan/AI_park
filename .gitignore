@@ -17,6 +17,8 @@ __pycache__/
 *.onnx
 *.engine
 *.so
+# Dữ liệu thử (clip, kết quả model) của từng bài: AI_park/data/<bài>/..., nằm TRONG project nhưng không vào git
+/data/
 # Video debug của engine, kết quả demo
 people_count/out/
 demo/out/

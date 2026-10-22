@@ -7,8 +7,9 @@ Mỗi đối số `nguồn=chức năng[,chức năng]`:
   nguồn     đường dẫn file video, hoặc TÊN biến camera trong people_count/.env (link có mật khẩu không gõ ra lệnh)
   chức năng count (đếm người / chó / mèo), crowd (đám đông), bang_ron (băng rôn đang được cầm),
             lan_chiem (xe máy, ghế, xe đẩy... đứng yên quá --dwell giây; lớp + nguồn lấy từ dataset/classes.yaml),
-            phong_ue (chó ngồi xổm giữ quá --squat-hold giây; keypoint DeepLabCut, cần env có deeplabcut)
-Ra: demo/out/<giờ chạy>/<nguồn>.avi (xem bằng VLC) + events.jsonl (mọi event, 1 dòng JSON); cuối cùng in bảng tóm tắt.
+            phong_ue (động vật ngồi xổm giữ quá --squat-hold giây; keypoint DeepLabCut, cần env có deeplabcut)
+Ra: demo/out/<giờ chạy>/<nguồn>.avi (xem bằng VLC) + events.jsonl (mọi event, 1 dòng JSON) + bang_chung/*.jpg (ảnh lúc
+mỗi alert_start, đường dẫn trong evidence.snapshot của event); cuối cùng in bảng tóm tắt.
 Camera chạy tới --sec giây (0 = tới khi Ctrl+C). Ctrl+C: dừng gọn nguồn đang chạy, ghi xong file, bỏ các nguồn còn lại.
 
 Perception bằng ultralytics (Python thuần, không DeepStream): YOLO26n (cùng model engine overview) cho count / crowd,
@@ -37,7 +38,7 @@ from common.masking import mask  # noqa: E402
 from counter import CountModule  # noqa: E402
 from crowd import CrowdModule  # noqa: E402
 from events import envelope  # noqa: E402
-from dlc_pose import to_dog_objs  # noqa: E402
+from dlc_pose import to_animal_objs  # noqa: E402
 from lan_chiem import LanChiemModule, iou  # noqa: E402
 from meta import FrameMeta, Line, Obj, Text  # noqa: E402
 from phong_ue import PhongUeModule  # noqa: E402
@@ -188,13 +189,13 @@ def run_source(name, uri, live, fns, models, args, out_dir, events_out):
                 for m in lan_mods:
                     events += m.update(FrameMeta(name, ts, w, h, tuple(lan)))
             if pu_mods:
-                dogs = to_dog_objs(*models["dlc"](img, args.dog_conf), w, h, args.dog_conf)
-                shown += dogs
+                animals = to_animal_objs(*models["dlc"](img, args.dog_conf), w, h, args.dog_conf)
+                shown += animals
                 for m in pu_mods:
-                    events += m.update(FrameMeta(name, ts, w, h, tuple(dogs)))
-            for ev in events:
-                emit(ev, events_out, counts)
+                    events += m.update(FrameMeta(name, ts, w, h, tuple(animals)))
             img = draw(img, shown, [s for m in det_mods + ban_mods + lan_mods + pu_mods for s in m.draw()])
+            for ev in events:  # sau khi vẽ: ảnh bằng chứng có cả khung + lý do báo
+                emit(ev, events_out, counts, snapshot(img, out_dir, ev) if ev["event_type"] == "alert_start" else None)
             if writer is None:  # avi + MJPG: dừng giữa chừng vẫn xem được phần đã ghi
                 writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*"MJPG"), src_fps / every, (w, h))
             writer.write(img)
@@ -217,14 +218,23 @@ def run_source(name, uri, live, fns, models, args, out_dir, events_out):
     return dict(nguon=name, chuc_nang=",".join(fns), frame=n, events=counts, file=path if n else "-", dung=stopped)
 
 
-def emit(ev, events_out, counts):
-    line = json.dumps(envelope(ev, str(uuid.uuid4())), ensure_ascii=False)
+def snapshot(img, out_dir, ev):
+    """Ảnh bằng chứng lúc alert_start (frame đã vẽ: thấy cả khung + lý do báo) -> đường dẫn cho evidence.snapshot."""
+    path = os.path.join(out_dir, "bang_chung", f"{ev['cam_id']}_{ev['function']}_{ev['ts']:.1f}s.jpg")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    cv2.imwrite(path, img)
+    return path
+
+
+def emit(ev, events_out, counts, snap=None):
+    line = json.dumps(envelope(ev, str(uuid.uuid4()), snap), ensure_ascii=False)
     events_out.write(line + "\n")
     events_out.flush()
     key = f"{ev['function']}:{ev['event_type']}"
     counts[key] = counts.get(key, 0) + 1
     if ev["event_type"] != "report":  # cảnh báo in ngay để người xem thấy lúc chạy
-        print(f"  {ev['cam_id']}: {ev['function']} {ev['event_type']} lúc {ev['ts']:.1f}s {ev['payload']}")
+        print(f"  {ev['cam_id']}: {ev['function']} {ev['event_type']} lúc {ev['ts']:.1f}s {ev['payload']}"
+              + (f"\n    ảnh: {snap}" if snap else ""))
 
 
 def main(argv=None):
@@ -239,7 +249,7 @@ def main(argv=None):
     ap.add_argument("--squat-ratio", type=float, default=0.56,
                     help="phong_ue: hông / thân dưới bấy nhiêu là ngồi xổm (đo 2026-10-22, 1 clip: 0.56 sạch, 0.58 đã nhầm)")
     ap.add_argument("--squat-hold", type=float, default=3, help="phong_ue: giữ bấy nhiêu giây mới báo / mới hết (đo: 3)")
-    ap.add_argument("--dog-conf", type=float, default=0.5, help="phong_ue: độ tin tối thiểu khung chó (CHƯA ĐO)")
+    ap.add_argument("--dog-conf", type=float, default=0.5, help="phong_ue: độ tin tối thiểu khung con vật (CHƯA ĐO; clip 1: 0.99)")
     ap.add_argument("--fps", type=float, default=0, help="số frame / giây xử lý (0 = mọi frame, video mượt)")
     ap.add_argument("--sec", type=float, default=0, help="camera: chạy bấy nhiêu giây (0 = tới khi Ctrl+C)")
     ap.add_argument("--show", action="store_true", help="hiện cửa sổ xem trực tiếp (q: sang nguồn tiếp)")

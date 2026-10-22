@@ -12,10 +12,11 @@ Model tự tải lần đầu: YOLO / YOLOE vào `demo/models/` (YOLO26n dùng `
 DeepLabCut (SuperAnimal-Quadruped) vào thư mục cài deeplabcut. Sau đó chạy offline.
 
 ## Chạy (từ thư mục `AI_park`)
+Clip thử để trong `data/<bài>/` (vd `data/phong_ue/co/`, `data/phong_ue/khong/`): trong project, `.gitignore` chặn, không vào git.
 ```bash
 conda activate dlc
 python demo/run_demo.py people_count/videos/park1.mp4=count,crowd ~/bang_ron/co/bieutinh.mp4=bang_ron ~/via_he/via_he.mp4=lan_chiem
-python demo/run_demo.py ~/phong_ue/co/dogpoop.mp4=phong_ue
+python demo/run_demo.py data/phong_ue/co/dogpoop.mp4=phong_ue
 python demo/run_demo.py CAM_01_URL=count,crowd --sec 120 --show      # camera: tên biến trong people_count/.env
 python demo/run_demo.py -h                                            # mọi tuỳ chọn
 ```
@@ -25,9 +26,10 @@ python demo/run_demo.py -h                                            # mọi tu
 | `crowd` | số người >= ngưỡng, quá nửa thời gian `--hold` giây -> cảnh báo | `--min-people 5 --hold 10` |
 | `bang_ron` | băng rôn đang được người cầm (băng rôn treo cao không tính), quá nửa thời gian `--hold` giây -> cảnh báo | `--banner-conf 0.3 --hold 10` |
 | `lan_chiem` | xe máy / ô tô / ghế / bàn / ô dù / xe đẩy / gánh / sạp **đứng yên trùng chỗ** quá nửa thời gian `--dwell` giây -> cảnh báo kèm danh sách vật. Lớp + nguồn (COCO / YOLOE) lấy từ `dataset/classes.yaml`. **Cần camera đứng yên** | `--dwell 60` |
-| `phong_ue` | chó **ngồi xổm** (hông hạ: chân sau - gốc đuôi < `--squat-ratio` x thân, keypoint DeepLabCut) quá nửa thời gian `--squat-hold` giây -> cảnh báo. Chưa tách được đi tiểu. Ngưỡng mới đo trên 1 clip | `--squat-ratio 0.56 --squat-hold 3 --dog-conf 0.5` |
+| `phong_ue` | **động vật** (không phân biệt loài) **ngồi xổm**: hông (chân sau - gốc đuôi) < `--squat-ratio` x thân (cổ - gốc đuôi), keypoint DeepLabCut; quá nửa thời gian `--squat-hold` giây -> cảnh báo. Video vẽ C / D / P, thanh hông + vạch ngưỡng. Không bắt chó đực nhấc chân. Ngưỡng mới đo trên 1 clip | `--squat-ratio 0.56 --squat-hold 3 --dog-conf 0.5` |
 
-Ra: `demo/out/<giờ chạy>/<nguồn>.avi` (VLC) + `events.jsonl`; cảnh báo in ngay lúc chạy; cuối cùng in bảng tóm tắt.
+Ra: `demo/out/<giờ chạy>/<nguồn>.avi` (VLC) + `events.jsonl` + `bang_chung/*.jpg` (ảnh mỗi lần `alert_start`, đường dẫn trong
+`evidence.snapshot`); cảnh báo in ngay lúc chạy; cuối cùng in bảng tóm tắt. `--show`: xem trực tiếp lúc chạy.
 Ctrl+C: dừng gọn nguồn đang chạy (file vẫn xem được), bỏ các nguồn còn lại. `--fps 5`: chạy nhanh hơn, video giật hơn.
 
 ## Giới hạn (PoC)

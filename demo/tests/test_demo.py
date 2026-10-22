@@ -1,6 +1,6 @@
-"""Test công cụ demo (M1-M5): đọc đối số nguồn=chức năng, đổi kết quả model, module băng rôn. Thời gian truyền tay."""
+"""Test công cụ demo (M1-M15): đọc đối số nguồn=chức năng, đổi kết quả model, module băng rôn. Thời gian truyền tay."""
 from bang_ron import BannerModule
-from meta import FrameMeta, Obj
+from meta import FrameMeta, Line, Obj, Text
 from run_demo import parse_sources, to_objs
 
 PERSON = Obj("person", 0.9, (0.40, 0.40, 0.60, 1.00), None)             # người đứng giữa khung
@@ -153,7 +153,7 @@ def test_m10_vat_dung_yen_nhan_sat_nua_so_lan_chi_bao_mot_lan():
 
 
 # ---------- phong_ue ----------
-from dlc_pose import to_dog_objs  # noqa: E402
+from dlc_pose import to_animal_objs  # noqa: E402
 from phong_ue import PhongUeModule, hip_ratio  # noqa: E402
 
 W, H = 1280, 720  # clip đo 2026-10-22: khung KHÔNG vuông
@@ -164,7 +164,7 @@ def cho(ratio, body=100.0, conf=0.9, x=400.0, y=280.0):
     px = {"neck_base": (x + body, y), "tail_base": (x, y), "back_left_paw": (x + 5, y + ratio * body),
           "back_right_paw": (x - 5, y + ratio * body), "nose": (x + body + 20, y - 10)}
     kp = {k: (a / W, b / H, conf) for k, (a, b) in px.items()}
-    return Obj("dog", 0.95, (x / W, (y - 20) / H, (x + body + 30) / W, (y + body) / H), None, kp)
+    return Obj("animal", 0.95, (x / W, (y - 20) / H, (x + body + 30) / W, (y + body) / H), None, kp)
 
 
 def test_m11_chieu_cao_hong_tinh_bang_pixel_va_bo_cho_khong_do_duoc():
@@ -178,7 +178,7 @@ def test_m11_chieu_cao_hong_tinh_bang_pixel_va_bo_cho_khong_do_duoc():
     assert abs(hip_ratio(cho(0.54), W, H, 0.3, 40) - 0.54) < 1e-6
     assert hip_ratio(cho(0.54, conf=0.2), W, H, 0.3, 40) is None       # model không chắc điểm khớp
     assert hip_ratio(cho(0.54, body=25), W, H, 0.3, 40) is None        # chó quá nhỏ, keypoint nhảy
-    assert hip_ratio(Obj("dog", 0.9, (0, 0, 1, 1), None), W, H, 0.3, 40) is None   # không có keypoint
+    assert hip_ratio(Obj("animal", 0.9, (0, 0, 1, 1), None), W, H, 0.3, 40) is None   # không có keypoint
 
 
 def pu_run(mod, dog_at, start, seconds, fps=15.0):
@@ -205,7 +205,8 @@ def test_m12_ngoi_xom_du_lau_moi_bao_cui_ngui_thoang_qua_khong_bao():
 
 
 def test_m13_ket_qua_deeplabcut_doi_sang_obj_bo_hang_dem_va_khung_yeu():
-    """Tình huống thật: DeepLabCut trả khung xywh pixel, đệm đủ max_individuals bằng -1, có khung yếu (bóng cây).
+    """Tình huống thật: DeepLabCut trả khung xywh pixel, đệm đủ max_individuals bằng -1, có khung yếu (bóng cây);
+    detector không phân biệt loài -> mọi con vật là "animal" (Thuận chốt: chỉ cần biết động vật phóng uế).
     Giả lập: 3 hàng: chó thật (0.95), khung yếu (0.2), hàng đệm (-1); khung chó lấn ra mép phải ảnh.
     Đỏ thì hỏng gì: khung yếu / hàng đệm thành "chó" -> đo dáng trên rác; bbox sai định dạng -> vẽ lệch, hợp đồng meta vỡ.
     """
@@ -214,7 +215,60 @@ def test_m13_ket_qua_deeplabcut_doi_sang_obj_bo_hang_dem_va_khung_yeu():
     boxes = np.array([[1200, 360, 160, 90], [10, 10, 50, 50], [-1, -1, -1, -1]], float)
     scores = np.array([0.95, 0.2, -1])
     poses = np.array([[[1250, 380, 0.9], [1210, 390, 0.8]], [[20, 20, 0.5], [30, 30, 0.5]], [[-1, -1, -1], [-1, -1, -1]]])
-    objs = to_dog_objs(boxes, scores, poses, names, W, H, 0.5)
-    assert len(objs) == 1 and objs[0].cls == "dog" and objs[0].conf == 0.95
+    objs = to_animal_objs(boxes, scores, poses, names, W, H, 0.5)
+    assert len(objs) == 1 and objs[0].cls == "animal" and objs[0].conf == 0.95
     assert objs[0].bbox == (1200 / W, 0.5, 1.0, 450 / H)                     # xywh -> xyxy tỉ lệ, kẹp mép phải
     assert objs[0].kp["neck_base"] == (1250 / W, 380 / H, 0.9)
+
+
+
+def test_m14_hinh_ve_the_hien_dung_luat_va_khop_phep_do():
+    """Tình huống thật: người xem video demo phải hiểu VÌ SAO hệ gọi là ngồi xổm (Thuận 2026-10-22: bản đầu vẽ đường chéo
+    gốc đuôi -> chân, không khớp phép đo, nhìn không hiểu).
+    Giả lập: 1 con đứng (hông 0.70) và 1 con ngồi (0.50) cùng frame 1280x720, thân 100 px, ngưỡng 0.56.
+    Đỏ thì hỏng gì: thanh hông vẽ sai chỗ / vạch ngưỡng sai độ sâu -> hình nói một đằng, luật làm một nẻo; khách hỏi không giải thích được.
+    """
+    mod = PhongUeModule("a", 0.56, 3, 3)
+    mod.update(FrameMeta("a", 0.0, W, H, (cho(0.70, x=200), cho(0.50, x=800))))
+    shapes = mod.draw()
+    lines = [s for s in shapes if isinstance(s, Line)]
+    texts = [s.text for s in shapes if isinstance(s, Text)]
+    for x, r, kind in ((200, 0.70, "zone"), (800, 0.50, "alert")):
+        d = (x / W, 280 / H)
+        hip = [ln for ln in lines if (ln.x1, ln.y1, ln.x2) == (*d, d[0])]           # thanh ĐỨNG thả từ gốc đuôi
+        assert len(hip) == 1 and abs(hip[0].y2 - (280 + r * 100) / H) < 1e-9 and hip[0].kind == kind
+        mark = [ln for ln in lines if ln.kind == "info" and ln.y1 == ln.y2 and ln.x1 < d[0] < ln.x2]
+        assert any(abs(ln.y1 - (280 + 0.56 * 100) / H) < 1e-9 for ln in mark)     # vạch ngưỡng đúng độ sâu 0.56 thân
+    assert "hong 0.70 DUNG" in texts and "hong 0.50 < 0.56 NGOI XOM" in texts and {"C", "D", "P"} <= set(texts)
+    assert any(t.startswith("phong ue: ngoi xom 100% / 3s") for t in texts)
+
+
+def test_m15_canh_bao_kem_anh_bang_chung(tmp_path):
+    """Tình huống thật: khách cần ẢNH làm bằng chứng mỗi lần báo (Thuận chốt 2026-10-22).
+    Giả lập: video 6s tự dựng; perception giả (thay DeepLabCut) luôn thấy 1 con vật ngồi xổm; chạy run_source thật.
+    Đỏ thì hỏng gì: event báo mà không có ảnh, hoặc đường dẫn ảnh trong event trỏ tới file không có.
+    """
+    import json
+    import os
+    import types
+
+    import cv2
+    import numpy as np
+    from run_demo import run_source
+
+    video = str(tmp_path / "v.avi")
+    wr = cv2.VideoWriter(video, cv2.VideoWriter_fourcc(*"MJPG"), 15, (320, 180))
+    for _ in range(90):
+        wr.write(np.full((180, 320, 3), 90, np.uint8))
+    wr.release()
+    o = cho(0.50, body=400)  # khung 320x180 = 1/4 của 1280x720: thân còn 100 px (>= min_body_px 40)
+    fake = lambda img, conf: (np.array([[100.0, 60.0, 80.0, 50.0]]), np.array([0.99]),  # noqa: E731
+                              np.array([[[o.kp[n][0] * 320, o.kp[n][1] * 180, 0.9] for n in o.kp]]), list(o.kp))
+    args = types.SimpleNamespace(report_sec=30, min_people=5, hold=10, banner_conf=0.3, dwell=60, squat_ratio=0.56,
+                                 squat_hold=3, dog_conf=0.5, conf=0.25, fps=0, sec=0, show=False)
+    with open(tmp_path / "events.jsonl", "w") as f:
+        row = run_source("v", video, False, ["phong_ue"], {"dlc": fake}, args, str(tmp_path), f)
+    evs = [json.loads(line) for line in open(tmp_path / "events.jsonl")]
+    assert row["events"] == {"phong_ue:alert_start": 1} and len(evs) == 1
+    snap = evs[0]["evidence"]["snapshot"]
+    assert snap and os.path.isfile(snap) and cv2.imread(snap).shape == (180, 320, 3)
