@@ -136,4 +136,17 @@ def test_m9_don_di_thi_het_va_khong_bao_lai_khi_doi_danh_sach():
     ev = lc_run(mod, lambda t: [xe(0.2)] + ([xe(0.6, "chair")] if t >= 90 else []), 0, 120)
     ev += lc_run(mod, lambda t: [], 120, 120)
     assert [e["event_type"] for e in ev] == ["alert_start", "alert_end"]
-    assert 120 < ev[1]["ts"] <= 160  # vật dọn đi: tỉ lệ có mặt tụt dưới nửa sau ~dwell/2
+    assert 175 <= ev[1]["ts"] <= 190  # vật dọn đi: hết khi không thấy lại lần nào trong dwell (lần thấy cuối 115s)
+
+
+def test_m10_vat_dung_yen_nhan_sat_nua_so_lan_chi_bao_mot_lan():
+    """Tình huống thật: ghế quán cóc đứng yên cả buổi nhưng model chỉ nhận ~nửa số lần (bị che, đổi nhãn chair / table).
+    Giả lập: dwell 30s, mẫu 5s; ghế có mặt ở mẫu chẵn, mất ở mẫu lẻ, suốt 15 phút. Kèm vật thoáng qua 1/3 số mẫu.
+    Đỏ thì hỏng gì: 1 cái ghế thành 174 tin báo / hết trong 15 phút (code cũ, 2026-10-22); người quản lý tắt cảnh báo.
+    """
+    mod = LanChiemModule("a", MOTO, dwell_sec=30)
+    ev = lc_run(mod, lambda t: [xe(0.5, "chair")] if int(t / 5) % 2 == 0 else [], 0, 900)
+    assert [e["event_type"] for e in ev] == ["alert_start"]
+    # tách ngưỡng ra không được nới ngưỡng vào: vật chỉ có mặt 1/3 số mẫu vẫn không bao giờ được báo
+    mod = LanChiemModule("a", MOTO, dwell_sec=30)
+    assert lc_run(mod, lambda t: [xe(0.5, "chair")] if int(t / 5) % 3 == 0 else [], 0, 900) == []
