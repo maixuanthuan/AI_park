@@ -8,7 +8,11 @@ Logic B (Thuận chốt 2026-10-21), KHÔNG dùng tracker: dwell tính bằng ph
   (chịu được người đi qua che khuất, model sót vài lần: cùng kiểu "quá nửa thời gian" của crowd / bang_ron).
   Xe chạy qua: mỗi mẫu một chỗ khác -> không bao giờ đủ -> không báo.
 - Có >= 1 vật đứng yên -> alert_start (kèm danh sách vật); không còn vật nào -> alert_end. Danh sách đổi giữa chừng
-  không bắn event mới (một quán cóc không thành mười mấy tin). Vật dọn đi: tỉ lệ có mặt tụt dưới nửa sau ~dwell_sec/2.
+  không bắn event mới (một quán cóc không thành mười mấy tin).
+- Vào và ra KHÁC ngưỡng: vào = quá nửa số mẫu (như trên); ra = KHÔNG THẤY LẠI LẦN NÀO trong dwell_sec (ứng viên bị xoá).
+  Bản đầu dùng cùng một ngưỡng "quá nửa" cho cả hai: vật đứng yên mà model nhận sát nửa số lần (đổi nhãn, bị che)
+  -> báo / hết mỗi 5s, 174 event / 15 phút cho 1 cái ghế (giả lập 2026-10-22). Chỉ áp bài học D10 của crowd (xét hết
+  bằng dữ liệu sau lúc báo) vẫn còn 43 event; tách ngưỡng ra -> 1 event. Giá: vật dọn đi thật thì dwell_sec sau mới hết.
 - Ứng viên không thấy lại quá dwell_sec thì xoá (bộ nhớ không phình theo số xe chạy qua).
 Giới hạn: camera phải đứng yên (camera xoay / quay tay thì mọi thứ "di chuyển"); vùng = cả khung (PoC), thực tế phải
 vẽ vùng vỉa hè và tránh đồ cố định hợp lệ (ghế đá, bồn cây); hai vật đỗ chồng đúng chỗ nhau tính là một.
@@ -63,7 +67,10 @@ class LanChiemModule:
                 c["hits"].popleft()
         self.cands = [c for c in self.cands if c["hits"]]  # không thấy lại quá dwell_sec: xoá
         n = len(self.samples)
-        self.static = [c for c in self.cands if ts - c["first"] >= self.dwell and len(c["hits"]) > n / 2]
+        for c in self.cands:  # đã đứng yên thì giữ tới khi bị xoá (không thấy lại lần nào trong dwell_sec), xem đầu file
+            if ts - c["first"] >= self.dwell and len(c["hits"]) > n / 2:
+                c["locked"] = True
+        self.static = [c for c in self.cands if c.get("locked")]
 
         if bool(self.static) == self.alarm:
             return []
