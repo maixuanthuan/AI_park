@@ -150,3 +150,71 @@ def test_m10_vat_dung_yen_nhan_sat_nua_so_lan_chi_bao_mot_lan():
     # tách ngưỡng ra không được nới ngưỡng vào: vật chỉ có mặt 1/3 số mẫu vẫn không bao giờ được báo
     mod = LanChiemModule("a", MOTO, dwell_sec=30)
     assert lc_run(mod, lambda t: [xe(0.5, "chair")] if int(t / 5) % 3 == 0 else [], 0, 900) == []
+
+
+# ---------- phong_ue ----------
+from dlc_pose import to_dog_objs  # noqa: E402
+from phong_ue import PhongUeModule, hip_ratio  # noqa: E402
+
+W, H = 1280, 720  # clip đo 2026-10-22: khung KHÔNG vuông
+
+
+def cho(ratio, body=100.0, conf=0.9, x=400.0, y=280.0):
+    """Chó dài `body` px (cổ -> gốc đuôi nằm ngang), chân sau thấp hơn gốc đuôi ratio * body px. kp tỉ lệ 0..1."""
+    px = {"neck_base": (x + body, y), "tail_base": (x, y), "back_left_paw": (x + 5, y + ratio * body),
+          "back_right_paw": (x - 5, y + ratio * body), "nose": (x + body + 20, y - 10)}
+    kp = {k: (a / W, b / H, conf) for k, (a, b) in px.items()}
+    return Obj("dog", 0.95, (x / W, (y - 20) / H, (x + body + 30) / W, (y + body) / H), None, kp)
+
+
+def test_m11_chieu_cao_hong_tinh_bang_pixel_va_bo_cho_khong_do_duoc():
+    """Tình huống thật: camera 1280x720, chó đứng (hông 0.64 thân) / ngồi xổm (0.54); có lúc model không chắc điểm khớp,
+    có lúc chó ở rất xa (thân 25 px).
+    Giả lập: dựng keypoint bằng pixel rồi đổi sang tỉ lệ 0..1 như hợp đồng meta.
+    Đỏ thì hỏng gì: tính trên toạ độ tỉ lệ thì trục x, y khác thước (1280 vs 720) -> ngưỡng 0.56 đo được vô nghĩa;
+    điểm khớp mù / chó quá nhỏ mà vẫn tính -> báo nhầm.
+    """
+    assert abs(hip_ratio(cho(0.64), W, H, 0.3, 40) - 0.64) < 1e-6
+    assert abs(hip_ratio(cho(0.54), W, H, 0.3, 40) - 0.54) < 1e-6
+    assert hip_ratio(cho(0.54, conf=0.2), W, H, 0.3, 40) is None       # model không chắc điểm khớp
+    assert hip_ratio(cho(0.54, body=25), W, H, 0.3, 40) is None        # chó quá nhỏ, keypoint nhảy
+    assert hip_ratio(Obj("dog", 0.9, (0, 0, 1, 1), None), W, H, 0.3, 40) is None   # không có keypoint
+
+
+def pu_run(mod, dog_at, start, seconds, fps=15.0):
+    ev = []
+    for i in range(int(round(seconds * fps))):
+        t = start + i / fps
+        o = dog_at(t)
+        ev += mod.update(FrameMeta("a", t, W, H, (o,) if o else ()))
+    return ev
+
+
+def test_m12_ngoi_xom_du_lau_moi_bao_cui_ngui_thoang_qua_khong_bao():
+    """Tình huống thật: chó đi dạo, cúi ngửi 1s (hông hạ), rồi ngồi xổm phóng uế 6s, rồi đi tiếp (clip đo 2026-10-22).
+    Giả lập: 15 fps; hông 0.64 lúc đi, 0.54 lúc ngửi 1s và lúc phóng uế 6s; ngưỡng 0.56, cửa sổ 3s.
+    Đỏ thì hỏng gì: cúi ngửi cũng báo (người quản lý bị gọi vô ích), hoặc phóng uế thật không báo / báo nhiều lần.
+    """
+    mod = PhongUeModule("a", 0.56, 3, 3)
+    dang = lambda t: cho(0.54 if 10 <= t < 11 or 16 <= t < 22 else 0.64)  # noqa: E731
+    ev = pu_run(mod, dang, 0, 30)
+    assert [e["event_type"] for e in ev] == ["alert_start", "alert_end"]
+    assert 16 < ev[0]["ts"] <= 19.5 and ev[0]["function"] == "phong_ue"   # báo trong ~3s sau khi ngồi
+    assert ev[0]["payload"]["hong_than"] == 0.54
+    assert 22 < ev[1]["ts"] <= 25.5                                          # hết trong ~3s sau khi đứng dậy
+
+
+def test_m13_ket_qua_deeplabcut_doi_sang_obj_bo_hang_dem_va_khung_yeu():
+    """Tình huống thật: DeepLabCut trả khung xywh pixel, đệm đủ max_individuals bằng -1, có khung yếu (bóng cây).
+    Giả lập: 3 hàng: chó thật (0.95), khung yếu (0.2), hàng đệm (-1); khung chó lấn ra mép phải ảnh.
+    Đỏ thì hỏng gì: khung yếu / hàng đệm thành "chó" -> đo dáng trên rác; bbox sai định dạng -> vẽ lệch, hợp đồng meta vỡ.
+    """
+    import numpy as np
+    names = ["neck_base", "tail_base"]
+    boxes = np.array([[1200, 360, 160, 90], [10, 10, 50, 50], [-1, -1, -1, -1]], float)
+    scores = np.array([0.95, 0.2, -1])
+    poses = np.array([[[1250, 380, 0.9], [1210, 390, 0.8]], [[20, 20, 0.5], [30, 30, 0.5]], [[-1, -1, -1], [-1, -1, -1]]])
+    objs = to_dog_objs(boxes, scores, poses, names, W, H, 0.5)
+    assert len(objs) == 1 and objs[0].cls == "dog" and objs[0].conf == 0.95
+    assert objs[0].bbox == (1200 / W, 0.5, 1.0, 450 / H)                     # xywh -> xyxy tỉ lệ, kẹp mép phải
+    assert objs[0].kp["neck_base"] == (1250 / W, 380 / H, 0.9)

@@ -5,13 +5,17 @@ Perception bằng ultralytics (Python thuần); logic dùng lại nguyên module
 Khi khách đồng ý, chính logic đó chạy trên DeepStream (`people_count/run_engine.py`) để lên nhiều camera.
 
 ## Cài (1 lần)
-Môi trường riêng `yoloe` (không nâng ultralytics trong `deepcv`): torch cu121 + `ultralytics` + CLIP, thêm `python-dotenv`.
-Model tự tải vào `demo/models/` lần đầu (YOLO26n dùng `people_count/models/yolo26n.pt` nếu có).
+Môi trường `dlc` chạy được MỌI chức năng (gồm `phong_ue`): Python 3.10 + torch cu121 + `deeplabcut` (`pip install --pre`)
++ `ultralytics` + CLIP + `python-dotenv` (Claude kiểm 2026-10-22: deeplabcut 3.0.2 + ultralytics 8.4.183 chạy chung, đủ test).
+Env cũ `yoloe` vẫn chạy được mọi chức năng TRỪ `phong_ue`. Không nâng ultralytics trong `deepcv` (Detect2026 đang dùng).
+Model tự tải lần đầu: YOLO / YOLOE vào `demo/models/` (YOLO26n dùng `people_count/models/yolo26n.pt` nếu có);
+DeepLabCut (SuperAnimal-Quadruped) vào thư mục cài deeplabcut. Sau đó chạy offline.
 
 ## Chạy (từ thư mục `AI_park`)
 ```bash
-conda activate yoloe
+conda activate dlc
 python demo/run_demo.py people_count/videos/park1.mp4=count,crowd ~/bang_ron/co/bieutinh.mp4=bang_ron ~/via_he/via_he.mp4=lan_chiem
+python demo/run_demo.py ~/phong_ue/co/dogpoop.mp4=phong_ue
 python demo/run_demo.py CAM_01_URL=count,crowd --sec 120 --show      # camera: tên biến trong people_count/.env
 python demo/run_demo.py -h                                            # mọi tuỳ chọn
 ```
@@ -21,6 +25,7 @@ python demo/run_demo.py -h                                            # mọi tu
 | `crowd` | số người >= ngưỡng, quá nửa thời gian `--hold` giây -> cảnh báo | `--min-people 5 --hold 10` |
 | `bang_ron` | băng rôn đang được người cầm (băng rôn treo cao không tính), quá nửa thời gian `--hold` giây -> cảnh báo | `--banner-conf 0.3 --hold 10` |
 | `lan_chiem` | xe máy / ô tô / ghế / bàn / ô dù / xe đẩy / gánh / sạp **đứng yên trùng chỗ** quá nửa thời gian `--dwell` giây -> cảnh báo kèm danh sách vật. Lớp + nguồn (COCO / YOLOE) lấy từ `dataset/classes.yaml`. **Cần camera đứng yên** | `--dwell 60` |
+| `phong_ue` | chó **ngồi xổm** (hông hạ: chân sau - gốc đuôi < `--squat-ratio` x thân, keypoint DeepLabCut) quá nửa thời gian `--squat-hold` giây -> cảnh báo. Chưa tách được đi tiểu. Ngưỡng mới đo trên 1 clip | `--squat-ratio 0.56 --squat-hold 3 --dog-conf 0.5` |
 
 Ra: `demo/out/<giờ chạy>/<nguồn>.avi` (VLC) + `events.jsonl`; cảnh báo in ngay lúc chạy; cuối cùng in bảng tóm tắt.
 Ctrl+C: dừng gọn nguồn đang chạy (file vẫn xem được), bỏ các nguồn còn lại. `--fps 5`: chạy nhanh hơn, video giật hơn.
@@ -28,4 +33,6 @@ Ctrl+C: dừng gọn nguồn đang chạy (file vẫn xem được), bỏ các n
 ## Giới hạn (PoC)
 - Vùng = cả khung hình. Các nguồn chạy lần lượt, không song song.
 - `bang_ron`: thử khả thi 2026-10-21 mới có 1 clip biểu tình (quay điện thoại, cận) + 2 clip không: chưa kiểm góc camera cao, xa.
+- `phong_ue`: ngưỡng 0.56 đo trên 1 clip (camera chuông cửa, chó ~100 px); 0.58 đã báo nhầm lúc chó cúi ngửi -> biên hẹp, phải kiểm nhiều clip.
+  Detector DeepLabCut ~10 frame/s trên robo: video 15 fps chạy chậm hơn thời gian thực.
 - Test: `python -m pytest -q demo/tests` (không cần model, GPU).
