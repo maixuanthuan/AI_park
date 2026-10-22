@@ -6,12 +6,15 @@
 Mỗi đối số `nguồn=chức năng[,chức năng]`:
   nguồn     đường dẫn file video, hoặc TÊN biến camera trong people_count/.env (link có mật khẩu không gõ ra lệnh)
   chức năng count (đếm người / chó / mèo), crowd (đám đông), bang_ron (băng rôn đang được cầm),
-            lan_chiem (xe máy, ghế, xe đẩy... đứng yên quá --dwell giây; lớp + nguồn lấy từ dataset/classes.yaml)
-Ra: demo/out/<giờ chạy>/<nguồn>.avi (xem bằng VLC) + events.jsonl (mọi event, 1 dòng JSON); cuối cùng in bảng tóm tắt.
+            lan_chiem (xe máy, ghế, xe đẩy... đứng yên quá --dwell giây; lớp + nguồn lấy từ dataset/classes.yaml),
+            phong_ue (động vật ngồi xổm giữ quá --squat-hold giây; keypoint DeepLabCut, cần env có deeplabcut)
+Ra: demo/out/<giờ chạy>/<nguồn>.avi (xem bằng VLC) + events.jsonl (mọi event, 1 dòng JSON) + bang_chung/*.jpg (ảnh lúc
+mỗi alert_start, đường dẫn trong evidence.snapshot của event); cuối cùng in bảng tóm tắt.
 Camera chạy tới --sec giây (0 = tới khi Ctrl+C). Ctrl+C: dừng gọn nguồn đang chạy, ghi xong file, bỏ các nguồn còn lại.
 
 Perception bằng ultralytics (Python thuần, không DeepStream): YOLO26n (cùng model engine overview) cho count / crowd,
-YOLOE (gõ chữ là nhận) cho bang_ron và các lớp lan_chiem COCO không có. LOGIC dùng lại nguyên các module của people_count (counter.py, crowd.py): đúng cái
+YOLOE (gõ chữ là nhận) cho bang_ron và các lớp lan_chiem COCO không có, DeepLabCut (keypoint chó, demo/dlc_pose.py)
+cho phong_ue. LOGIC dùng lại nguyên các module của people_count (counter.py, crowd.py): đúng cái
 lợi của việc tách perception khỏi logic (KIEN_TRUC 3.4). Lên nhiều camera thì logic đó chạy lại trên DeepStream.
 Vùng: cả khung hình (PoC). Các nguồn chạy lần lượt (đủ cho demo vài nguồn, không phải cách chạy nhiều camera).
 """
@@ -35,10 +38,12 @@ from common.masking import mask  # noqa: E402
 from counter import CountModule  # noqa: E402
 from crowd import CrowdModule  # noqa: E402
 from events import envelope  # noqa: E402
+from dlc_pose import to_animal_objs  # noqa: E402
 from lan_chiem import LanChiemModule, iou  # noqa: E402
 from meta import FrameMeta, Line, Obj, Text  # noqa: E402
+from phong_ue import PhongUeModule  # noqa: E402
 
-FUNCS = ("count", "crowd", "bang_ron", "lan_chiem")
+FUNCS = ("count", "crowd", "bang_ron", "lan_chiem", "phong_ue")
 COCO = {0: "person", 15: "cat", 16: "dog"}   # count / crowd: 3 lớp như engine overview
 # lan_chiem: các lớp vật lấn chiếm trong dataset/classes.yaml (nguồn coco / yoloe, độ tin của từng lớp lấy từ đó)
 LAN_CHIEM = ("motorcycle", "bicycle", "car", "umbrella", "chair", "table", "vendor_cart", "shoulder_pole", "stall")
@@ -131,10 +136,13 @@ def run_source(name, uri, live, fns, models, args, out_dir, events_out):
     mods = {"count": lambda: CountModule(name, zones, ("person", "dog", "cat")),
             "crowd": lambda: CrowdModule(name, zones),
             "bang_ron": lambda: BannerModule(name, args.banner_conf, args.hold, args.hold, row=order.index("bang_ron")),
-            "lan_chiem": lambda: LanChiemModule(name, LAN_CHIEM, args.dwell, row=order.index("lan_chiem"))}
+            "lan_chiem": lambda: LanChiemModule(name, LAN_CHIEM, args.dwell, row=order.index("lan_chiem")),
+            "phong_ue": lambda: PhongUeModule(name, args.squat_ratio, args.squat_hold, args.squat_hold,
+                                              row=order.index("phong_ue"))}
     det_mods = [mods[f]() for f in fns if f in ("count", "crowd")]
     ban_mods = [mods[f]() for f in fns if f == "bang_ron"]
     lan_mods = [mods[f]() for f in fns if f == "lan_chiem"]
+    pu_mods = [mods[f]() for f in fns if f == "phong_ue"]
     # model nào chạy cho nguồn này, lấy lớp nào (chỉ chạy model cần đến)
     coco_map = {**(COCO if det_mods else {}), **(models["lan_coco"] if lan_mods else {})}
     yoe_names = ({BANNER, PERSON} if ban_mods else set()) | (set(models["lan_conf"]) if lan_mods else set())
@@ -180,9 +188,14 @@ def run_source(name, uri, live, fns, models, args, out_dir, events_out):
                 shown += lan
                 for m in lan_mods:
                     events += m.update(FrameMeta(name, ts, w, h, tuple(lan)))
-            for ev in events:
-                emit(ev, events_out, counts)
-            img = draw(img, shown, [s for m in det_mods + ban_mods + lan_mods for s in m.draw()])
+            if pu_mods:
+                animals = to_animal_objs(*models["dlc"](img, args.dog_conf), w, h, args.dog_conf)
+                shown += animals
+                for m in pu_mods:
+                    events += m.update(FrameMeta(name, ts, w, h, tuple(animals)))
+            img = draw(img, shown, [s for m in det_mods + ban_mods + lan_mods + pu_mods for s in m.draw()])
+            for ev in events:  # sau khi vẽ: ảnh bằng chứng có cả khung + lý do báo
+                emit(ev, events_out, counts, snapshot(img, out_dir, ev) if ev["event_type"] == "alert_start" else None)
             if writer is None:  # avi + MJPG: dừng giữa chừng vẫn xem được phần đã ghi
                 writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*"MJPG"), src_fps / every, (w, h))
             writer.write(img)
@@ -194,7 +207,7 @@ def run_source(name, uri, live, fns, models, args, out_dir, events_out):
     except KeyboardInterrupt:
         stopped = True
     finally:  # kể cả Ctrl+C: báo cáo phần cửa sổ còn dở, đóng file
-        for m in det_mods + ban_mods + lan_mods:
+        for m in det_mods + ban_mods + lan_mods + pu_mods:
             for ev in m.flush():
                 emit(ev, events_out, counts)
         cap.release()
@@ -205,14 +218,23 @@ def run_source(name, uri, live, fns, models, args, out_dir, events_out):
     return dict(nguon=name, chuc_nang=",".join(fns), frame=n, events=counts, file=path if n else "-", dung=stopped)
 
 
-def emit(ev, events_out, counts):
-    line = json.dumps(envelope(ev, str(uuid.uuid4())), ensure_ascii=False)
+def snapshot(img, out_dir, ev):
+    """Ảnh bằng chứng lúc alert_start (frame đã vẽ: thấy cả khung + lý do báo) -> đường dẫn cho evidence.snapshot."""
+    path = os.path.join(out_dir, "bang_chung", f"{ev['cam_id']}_{ev['function']}_{ev['ts']:.1f}s.jpg")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    cv2.imwrite(path, img)
+    return path
+
+
+def emit(ev, events_out, counts, snap=None):
+    line = json.dumps(envelope(ev, str(uuid.uuid4()), snap), ensure_ascii=False)
     events_out.write(line + "\n")
     events_out.flush()
     key = f"{ev['function']}:{ev['event_type']}"
     counts[key] = counts.get(key, 0) + 1
     if ev["event_type"] != "report":  # cảnh báo in ngay để người xem thấy lúc chạy
-        print(f"  {ev['cam_id']}: {ev['function']} {ev['event_type']} lúc {ev['ts']:.1f}s {ev['payload']}")
+        print(f"  {ev['cam_id']}: {ev['function']} {ev['event_type']} lúc {ev['ts']:.1f}s {ev['payload']}"
+              + (f"\n    ảnh: {snap}" if snap else ""))
 
 
 def main(argv=None):
@@ -224,6 +246,10 @@ def main(argv=None):
     ap.add_argument("--dwell", type=float, default=60, help="lan_chiem: đứng yên bấy nhiêu giây là lấn chiếm (demo)")
     ap.add_argument("--conf", type=float, default=0.25, help="độ tin tối thiểu của người / chó / mèo")
     ap.add_argument("--banner-conf", type=float, default=0.3, help="độ tin tối thiểu của băng rôn (thử 2026-10-21: 0.3)")
+    ap.add_argument("--squat-ratio", type=float, default=0.56,
+                    help="phong_ue: hông / thân dưới bấy nhiêu là ngồi xổm (đo 2026-10-22, 1 clip: 0.56 sạch, 0.58 đã nhầm)")
+    ap.add_argument("--squat-hold", type=float, default=3, help="phong_ue: giữ bấy nhiêu giây mới báo / mới hết (đo: 3)")
+    ap.add_argument("--dog-conf", type=float, default=0.5, help="phong_ue: độ tin tối thiểu khung con vật (CHƯA ĐO; clip 1: 0.99)")
     ap.add_argument("--fps", type=float, default=0, help="số frame / giây xử lý (0 = mọi frame, video mượt)")
     ap.add_argument("--sec", type=float, default=0, help="camera: chạy bấy nhiêu giây (0 = tới khi Ctrl+C)")
     ap.add_argument("--show", action="store_true", help="hiện cửa sổ xem trực tiếp (q: sang nguồn tiếp)")
@@ -235,10 +261,15 @@ def main(argv=None):
         print("LỖI, không chạy:\n  " + "\n  ".join(errors), file=sys.stderr)
         return 2
 
-    from ultralytics import YOLO, YOLOE  # nạp muộn: sai đối số thì báo ngay, không chờ nạp torch
+    # nạp muộn: sai đối số thì báo ngay, không chờ nạp torch; chỉ nạp thư viện của chức năng có dùng
     os.makedirs(MODELS, exist_ok=True)
     models = {}
     used = {f for *_, fns in sources for f in fns}
+    if used - {"phong_ue"}:
+        from ultralytics import YOLO, YOLOE
+    if "phong_ue" in used:
+        import dlc_pose
+        models["dlc"] = dlc_pose.load()
     models["lan_coco"], lan_prompts, models["lan_conf"] = load_lan_chiem(CLASSES_YAML) if "lan_chiem" in used \
         else ({}, [], {})
     if used & {"count", "crowd"} or models["lan_coco"]:

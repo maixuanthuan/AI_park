@@ -2,7 +2,7 @@
 
 pipeline.py đổi metadata của DeepStream sang các kiểu dưới đây; module logic chỉ đọc các kiểu này.
 """
-from typing import NamedTuple, Optional, Tuple
+from typing import Dict, NamedTuple, Optional, Tuple
 
 
 class Obj(NamedTuple):
@@ -10,6 +10,9 @@ class Obj(NamedTuple):
     conf: float
     bbox: Tuple[float, float, float, float]   # x1, y1, x2, y2 theo TỈ LỆ 0..1 của khung hình
     track_id: Optional[int]                   # None khi profile tắt tracker; chỉ unique trong 1 camera
+    # Thêm 2026-10-22 (demo phong_ue): keypoint {tên điểm: (x, y, độ tin)}, x / y TỈ LỆ 0..1 như bbox.
+    # None khi perception không có model keypoint. Mặc định None: mọi chỗ tạo Obj 4 trường giữ y nguyên.
+    kp: Optional[Dict[str, Tuple[float, float, float]]] = None
 
 
 class FrameMeta(NamedTuple):
