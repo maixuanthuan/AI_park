@@ -1,5 +1,6 @@
 """Test công cụ demo (M1-M15): đọc đối số nguồn=chức năng, đổi kết quả model, module băng rôn. Thời gian truyền tay."""
 from bang_ron import BannerModule
+from crowd import CrowdModule
 from meta import FrameMeta, Line, Obj, Text
 from run_demo import parse_sources, to_objs
 
@@ -16,28 +17,59 @@ def run(mod, objs_at, start, seconds, fps=2.0):
     return ev
 
 
-def test_m1_moi_nguon_gan_chuc_nang_rieng(tmp_path):
-    """Tình huống thật: khách đưa video khác nhau cho từng chức năng, kèm một camera thật (link nằm trong .env).
-    Giả lập: 1 file video gán count,crowd; 1 biến camera gán bang_ron.
-    Đỏ thì hỏng gì: chức năng chạy nhầm nguồn, hoặc phải gõ link có mật khẩu ra dòng lệnh.
+def test_m1_video_theo_ten_file_camera_linh_hoat(tmp_path):
+    """Tình huống thật (Thuận chốt 2026-10-23): video đặt tên theo chức năng (lan_chiem1, crowd+bang_ron1) để không ai hiểu
+    nhầm; camera thì linh hoạt: 1 camera chạy 1, vài, hoặc tất cả chức năng; link có mật khẩu chỉ nằm trong .env.
+    Giả lập: 2 video đặt tên đúng; 2 biến camera: 1 cái crowd,bang_ron, 1 cái all.
+    Đỏ thì hỏng gì: video chạy sai chức năng; camera không chạy được nhiều chức năng; phải gõ link có mật khẩu ra lệnh.
     """
-    f = tmp_path / "quang_truong.mp4"
-    f.write_bytes(b"x")
-    out, err = parse_sources([f"{f}=count,crowd", "CAM_01_URL=bang_ron"], {"CAM_01_URL": "rtsp://u:p@1.2.3.4/x"})
+    v1, v2 = tmp_path / "lan_chiem1.mp4", tmp_path / "crowd+bang_ron_bieu_tinh.mp4"
+    v1.write_bytes(b"x")
+    v2.write_bytes(b"x")
+    env = {"CAM_CONG": "rtsp://u:p@1.2.3.4/a", "CAM_BAI_CO": "rtsp://u:p@1.2.3.4/b"}
+    out, err = parse_sources([str(v1), str(v2), "CAM_CONG=crowd,bang_ron", "CAM_BAI_CO=all"], env)
     assert err == []
-    assert out == [("quang_truong", str(f), False, ["count", "crowd"]), ("CAM_01_URL", "rtsp://u:p@1.2.3.4/x", True, ["bang_ron"])]
+    out2, err2 = parse_sources(["CAM_CONG=bieutinh,phongue"], env)                       # camera theo tình huống
+    assert err2 == [] and out2[0][3] == ["crowd", "bang_ron", "phong_ue"]
+    assert out == [("lan_chiem1", str(v1), False, ["lan_chiem"]),
+                   ("crowd+bang_ron_bieu_tinh", str(v2), False, ["crowd", "bang_ron"]),
+                   ("CAM_CONG", env["CAM_CONG"], True, ["crowd", "bang_ron"]),
+                   ("CAM_BAI_CO", env["CAM_BAI_CO"], True, ["count", "crowd", "bang_ron", "lan_chiem", "phong_ue"])]
 
 
 def test_m2_doi_so_sai_bao_du_mot_luot(tmp_path):
-    """Tình huống thật: gõ nhầm tên chức năng, quên dấu =, gõ sai tên biến camera trước buổi demo.
-    Giả lập: 3 đối số sai 3 kiểu.
-    Đỏ thì hỏng gì: chạy mất vài phút rồi mới chết, hoặc sửa một lỗi mới thấy lỗi tiếp theo.
+    """Tình huống thật: video đặt tên mô tả (via_he.mp4), video lỡ ghi thêm =chức năng, camera quên ghi chức năng hoặc gõ
+    nhầm (cuont), gõ sai tên biến camera trước buổi demo.
+    Giả lập: 5 đối số sai 5 kiểu.
+    Đỏ thì hỏng gì: video chạy chức năng đoán mò, chạy vài phút rồi mới chết, hoặc sửa một lỗi mới thấy lỗi tiếp theo.
     """
-    f = tmp_path / "a.mp4"
-    f.write_bytes(b"x")
-    _, err = parse_sources([f"{f}=cuont", str(f), "CAM_X=count"], {})
-    assert len(err) == 3, err
-    assert "'cuont'" in err[0] and "thiếu '=chức năng'" in err[1] and "'CAM_X': không phải file video" in err[2]
+    bad, ok = tmp_path / "via_he.mp4", tmp_path / "count2.mp4"
+    bad.write_bytes(b"x")
+    ok.write_bytes(b"x")
+    _, err = parse_sources([str(bad), f"{ok}=crowd", "CAM_A", "CAM_A=cuont", "CAM_X=count"], {"CAM_A": "rtsp://x"})
+    assert len(err) == 5, err
+    assert "tên video phải bắt đầu bằng tình huống" in err[0] and "theo TÊN FILE" in err[1]
+    assert "CAM_A=all" in err[2] and "'cuont'" in err[3] and "'CAM_X': không phải file video" in err[4]
+
+
+def test_m18_ten_video_ra_chuc_nang():
+    """Tình huống thật: tên video có số thứ tự / ghi chú / nhiều chức năng; tên chức năng có dấu _ (lan_chiem, phong_ue);
+    viết hoa (chụp từ điện thoại).
+    Giả lập: các tên đúng và sai.
+    Đỏ thì hỏng gì: lan_chiem_quan_coc bị đọc nhầm, tên lạ (countdown, crowded) lọt qua thành chức năng.
+    """
+    from run_demo import funcs_from_name
+    assert funcs_from_name("x/lan_chiem1.mp4") == ["lan_chiem"]
+    assert funcs_from_name("lan_chiem_quan_coc.mp4") == ["lan_chiem"]
+    assert funcs_from_name("PHONG_UE-2.MP4") == ["phong_ue"]
+    assert funcs_from_name("crowd+bang_ron1.mp4") == ["crowd", "bang_ron"]
+    assert funcs_from_name("count+crowd+count3.mkv") == ["count", "crowd"]
+    assert funcs_from_name("bieutinh1.mp4") == ["crowd", "bang_ron"]                  # tình huống tiếng Việt
+    assert funcs_from_name("dongnguoi_cong_vien.mp4") == ["count", "crowd"]
+    assert funcs_from_name("LANCHIEM2.MP4") == ["lan_chiem"] and funcs_from_name("phongue1.mp4") == ["phong_ue"]
+    assert funcs_from_name("bieutinh+phongue1.mp4") == ["crowd", "bang_ron", "phong_ue"]
+    for wrong in ("via_he.mp4", "countdown.mp4", "crowded1.mp4", "crowd+via_he.mp4", "1lan_chiem.mp4", "bieutinhx.mp4"):
+        assert funcs_from_name(wrong) is None, wrong
 
 
 def test_m3_ket_qua_model_doi_sang_ti_le_va_bo_lop_khac():
@@ -274,49 +306,140 @@ def test_m15_canh_bao_kem_anh_bang_chung(tmp_path):
     assert snap and os.path.isfile(snap) and cv2.imread(snap).shape == (180, 320, 3)
 
 
-# ---------- --demo: data/<chức năng>/ ----------
-def test_m16_demo_quet_thu_muc_theo_chuc_nang(tmp_path):
-    """Tình huống thật: khách gửi video mới -> kéo vào data/<chức năng>/ (có thể chia co/ khong/), chạy `--demo` không sửa
-    lệnh; camera thật khai trong camera.txt; có file ghi chú lẫn vào; thư mục tạo sẵn còn trống chờ video.
-    Giả lập: count+crowd/ (2 video), phong_ue/co/ + phong_ue/khong/ + camera.txt (có dòng trống / chú thích), ghi chú .txt,
-    bang_ron/ trống.
-    Đỏ thì hỏng gì: video mới không được chạy / chạy sai chức năng; ghi chú bị coi là nguồn; thư mục trống chặn cả buổi demo.
+# ---------- --demo: quét data/ ----------
+def test_m16_demo_quet_data(tmp_path):
+    """Tình huống thật: khách gửi video mới -> đặt tên theo chức năng, kéo vào data/ (thư mục con tuỳ ý anh sắp xếp),
+    chạy `--demo` không sửa lệnh; camera thật khai trong data/camera.txt; có file ghi chú lẫn vào.
+    Giả lập: data/lan_chiem1.mp4, data/phong_ue/co/phong_ue1.mp4, data/phong_ue/khong/phong_ue2.mp4, ghi chú .txt,
+    camera.txt có dòng trống / chú thích / CAM=all.
+    Đỏ thì hỏng gì: video mới không được chạy; ghi chú bị coi là nguồn; camera không chạy.
     """
     from run_demo import scan_demo
-    for p in ["count+crowd/sang.mp4", "count+crowd/chieu.MKV", "phong_ue/co/cho.mp4", "phong_ue/khong/cho_di.mp4",
-              "phong_ue/ghi_chu.txt"]:
+    for p in ["lan_chiem1.mp4", "phong_ue/co/phong_ue1.mp4", "phong_ue/khong/phong_ue2.mp4", "phong_ue/ghi_chu.txt"]:
         (tmp_path / p).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / p).write_bytes(b"x")
-    (tmp_path / "phong_ue/camera.txt").write_text("# camera bãi cỏ\nCAM_BAI_CO\n\n")
-    (tmp_path / "bang_ron").mkdir()
-    out, errors, skipped = scan_demo(str(tmp_path))
-    assert errors == [] and skipped == ["bang_ron"]
-    assert out == [f"{tmp_path}/count+crowd/chieu.MKV=count,crowd", f"{tmp_path}/count+crowd/sang.mp4=count,crowd",
-                   f"{tmp_path}/phong_ue/co/cho.mp4=phong_ue", f"{tmp_path}/phong_ue/khong/cho_di.mp4=phong_ue",
-                   "CAM_BAI_CO=phong_ue"]
-    sources, errors = parse_sources(out, {"CAM_BAI_CO": "rtsp://u:p@1.2.3.4/x"})
-    assert errors == [] and [(n, fns) for n, _, _, fns in sources] == [
-        ("chieu", ["count", "crowd"]), ("sang", ["count", "crowd"]), ("cho", ["phong_ue"]), ("cho_di", ["phong_ue"]),
-        ("CAM_BAI_CO", ["phong_ue"])]
+    (tmp_path / "camera.txt").write_text("# camera công viên\nCAM_CONG=all\n\n")
+    out, errors = scan_demo(str(tmp_path))
+    assert errors == []
+    assert out == [f"{tmp_path}/lan_chiem1.mp4", f"{tmp_path}/phong_ue/co/phong_ue1.mp4",
+                   f"{tmp_path}/phong_ue/khong/phong_ue2.mp4", "CAM_CONG=all"]
+    sources, errors = parse_sources(out, {"CAM_CONG": "rtsp://u:p@1.2.3.4/x"})
+    assert errors == [] and [(n, len(fns)) for n, _, _, fns in sources] == [
+        ("lan_chiem1", 1), ("phong_ue1", 1), ("phong_ue2", 1), ("CAM_CONG", 5)]
 
 
 def test_m17_demo_sai_thi_bao_ro_khong_chay(tmp_path):
-    """Tình huống thật: gõ nhầm tên thư mục (phong-ue), camera.txt ghi tên biến chưa khai trong .env, chưa tạo data/,
-    data/ chỉ toàn thư mục trống, hoặc gõ lệnh không có nguồn nào.
-    Giả lập: các thư mục như trên trong thư mục tạm; main() với --demo-dir trỏ vào đó.
+    """Tình huống thật: video đặt tên mô tả, camera.txt ghi tên biến chưa khai trong .env, chưa tạo data/, data/ trống,
+    hoặc gõ lệnh không có nguồn nào.
+    Giả lập: các trường hợp trên trong thư mục tạm; main() với --demo-dir trỏ vào đó.
     Đỏ thì hỏng gì: chạy thiếu nguồn mà không biết, hoặc lỗi Python khó hiểu ngay trước buổi demo.
     """
     from run_demo import main, scan_demo
-    (tmp_path / "phong-ue").mkdir()
-    (tmp_path / "phong-ue/a.mp4").write_bytes(b"x")
-    (tmp_path / "crowd").mkdir()
-    (tmp_path / "crowd/camera.txt").write_text("CAM_CHUA_KHAI\n")
-    out, errors, _ = scan_demo(str(tmp_path))
+    (tmp_path / "via_he.mp4").write_bytes(b"x")
+    (tmp_path / "camera.txt").write_text("CAM_CHUA_KHAI=all\n")
+    out, errors = scan_demo(str(tmp_path))
     assert errors == []
     _, errors = parse_sources(out, {})
-    assert any("phong-ue" in e for e in errors) and any("CAM_CHUA_KHAI" in e for e in errors)
+    assert any("via_he" in e for e in errors) and any("CAM_CHUA_KHAI" in e for e in errors)
     assert scan_demo(str(tmp_path / "khong_co"))[1][0].startswith("chưa có thư mục")
-    (tmp_path / "rong" / "count").mkdir(parents=True)
+    (tmp_path / "rong").mkdir()
     assert "chưa có video / camera nào" in scan_demo(str(tmp_path / "rong"))[1][0]
     assert main(["--demo", "--demo-dir", str(tmp_path)]) == 2      # có lỗi -> không chạy, mã 2, chưa nạp model
-    assert main([]) == 2                                           # không nguồn, không --demo
+    (tmp_path / "rong2").mkdir()
+    assert main(["--demo-dir", str(tmp_path / "rong2")]) == 2     # menu mà data/ trống -> báo, không treo chờ phím
+
+
+def test_m19_ca_5_chuc_nang_tren_1_nguon_khong_xung_dot(tmp_path):
+    """Tình huống thật: 1 camera demo bật ALL: đếm, đám đông, băng rôn, lấn chiếm, phóng uế cùng lúc.
+    Giả lập: video 12s; perception giả cho cả 3 model (YOLO26n: 6 người + 1 xe máy đứng yên; YOLOE: băng rôn cầm tay +
+    người; DeepLabCut: 1 con vật ngồi xổm); dwell 6s; chạy run_source thật với cả 5 chức năng.
+    Đỏ thì hỏng gì: chạy chung bị lỗi, chức năng này nuốt kết quả chức năng kia, hoặc chữ trên video đè lên nhau
+    (count / crowd đặt cứng dòng 0 / 1 -> crowd + bang_ron từng đè).
+    """
+    import json
+    import types
+
+    import cv2
+    import numpy as np
+    import run_demo
+    from run_demo import FUNCS, load_lan_chiem, run_source, CLASSES_YAML
+
+    W2, H2 = 320, 180
+    (tmp_path / "vao").mkdir()   # video vào KHÔNG được nằm chỗ ghi video ra (<out>/all1.avi), không thì tự ghi đè lên mình
+    video = str(tmp_path / "vao" / "all1.avi")
+    wr = cv2.VideoWriter(video, cv2.VideoWriter_fourcc(*"MJPG"), 10, (W2, H2))
+    for _ in range(120):
+        wr.write(np.full((H2, W2, 3), 90, np.uint8))
+    wr.release()
+
+    def res(boxes, cls, conf):
+        return [types.SimpleNamespace(boxes=types.SimpleNamespace(
+            xyxy=np.array(boxes, float), cls=np.array(cls, float), conf=np.array(conf, float)))]
+    people = [[20 + 40 * i, 60, 50 + 40 * i, 170] for i in range(6)]
+    det = types.SimpleNamespace(predict=lambda img, conf, classes, verbose: res(
+        people + [[250, 120, 300, 170]], [0] * 6 + [3], [0.9] * 7))
+    lan_coco, lan_prompts, lan_conf = load_lan_chiem(CLASSES_YAML)
+    pairs = [("banner", "banner"), ("person", "person")] + lan_prompts
+    yoe = types.SimpleNamespace(predict=lambda img, conf, verbose: res(
+        [[15, 50, 60, 80], [20, 60, 50, 170]], [0, 1], [0.8, 0.9]))
+    o = cho(0.50, body=400)
+    dlc = lambda img, c: (np.array([[100.0, 60.0, 80.0, 50.0]]), np.array([0.99]),  # noqa: E731
+                          np.array([[[o.kp[n][0] * W2, o.kp[n][1] * H2, 0.9] for n in o.kp]]), list(o.kp))
+    models = {"det": det, "yoe": yoe, "dlc": dlc, "lan_coco": lan_coco, "lan_conf": lan_conf,
+              "yoe_ids": {k: n for k, (_, n) in enumerate(pairs)}}
+    args = types.SimpleNamespace(report_sec=5, min_people=5, hold=3, banner_conf=0.3, dwell=6, squat_ratio=0.56,
+                                 squat_hold=3, dog_conf=0.5, conf=0.25, fps=0, sec=0, show=False)
+    rows = []
+    orig = run_demo.draw
+    run_demo.draw = lambda img, objs, shapes: rows.append(shapes) or orig(img, objs, shapes)
+    try:
+        with open(tmp_path / "events.jsonl", "w") as f:
+            row = run_source("all1", video, False, list(FUNCS), models, args, str(tmp_path), f)
+    finally:
+        run_demo.draw = orig
+    ev = row["events"]
+    for fn in ("crowd", "bang_ron", "lan_chiem", "phong_ue"):
+        assert ev.get(f"{fn}:alert_start") == 1, (fn, ev)
+    assert ev.get("count:report", 0) >= 2
+    tops = [t.row for t in rows[-1] if isinstance(t, Text) and (t.x, t.y) == (0.0, 0.0)]
+    assert sorted(tops) == [0, 1, 2, 3, 4]                         # mỗi chức năng một dòng, không đè
+    snaps = [json.loads(line)["evidence"]["snapshot"] for line in open(tmp_path / "events.jsonl")]
+    assert sum(1 for s in snaps if s) == 4
+
+
+def test_m20_chu_khong_de_khi_thieu_count():
+    """Tình huống thật: camera cổng chỉ bật crowd + bang_ron (biểu tình), không bật count.
+    Giả lập: CrowdModule (people_count đặt cứng dòng 1) + BannerModule (dòng theo thứ tự = 1) trên cùng nguồn.
+    Đỏ thì hỏng gì: dòng "dam dong" và "bang ron" vẽ chồng lên nhau, khách đọc không ra.
+    """
+    from run_demo import FULL, top_row
+    zones = [{"zone_id": "a-crowd", "cam_id": "a", "function": "crowd", "polygon": FULL, "ref_size": [1, 1],
+              "params": {"min_people": 5, "hold_sec": 10, "clear_sec": 10}, "version": 1}]
+    order = ["crowd", "bang_ron"]
+    mods = [CrowdModule("a", zones), BannerModule("a", 0.3, 10, 10, row=order.index("bang_ron"))]
+    rows = [t.row for m in mods for t in top_row(m, order) if isinstance(t, Text) and (t.x, t.y) == (0.0, 0.0)]
+    assert rows == [0, 1]
+
+
+
+def test_m21_menu_chon_tinh_huong_nao_chay_tinh_huong_do(monkeypatch):
+    """Tình huống thật (Thuận 2026-10-23): đang demo, khách muốn xem gì thì chọn đó, không chạy hết rồi ngồi đợi; gõ nhầm
+    không được thoát chương trình; model chỉ nạp 1 lần cho cả buổi.
+    Giả lập: 3 nguồn trong menu; gõ lần lượt "9" (sai), "2", "1 3", "q"; thay nạp model + chạy nguồn bằng bản ghi lại.
+    Đỏ thì hỏng gì: chọn 2 mà chạy nguồn khác / chạy hết; gõ nhầm là văng ra giữa buổi; mỗi lần chọn lại nạp model.
+    """
+    import run_demo
+    from run_demo import parse_choice, run_menu
+    assert parse_choice("q", 3) == "q" and parse_choice(" 2 ", 3) == [1] and parse_choice("1,3", 3) == [0, 2]
+    assert parse_choice("a", 3) == [0, 1, 2] and parse_choice("4", 3) is None and parse_choice("x", 3) is None
+    loads, ran = [], []
+    monkeypatch.setattr(run_demo, "load_models", lambda used: loads.append(sorted(used)) or {})
+    monkeypatch.setattr(run_demo, "run_many", lambda srcs, *a: ran.append([s[0] for s in srcs]) or [])
+    monkeypatch.setattr(run_demo, "summary", lambda rows, out_dir: None)
+    monkeypatch.setattr(run_demo, "new_out_dir", lambda: str(__import__("tempfile").mkdtemp()))
+    sources = [("bieutinh1", "a", False, ["crowd", "bang_ron"]), ("lanchiem1", "b", False, ["lan_chiem"]),
+               ("CAM_CONG", "rtsp://x", True, ["phong_ue"])]
+    answers = iter(["9", "2", "1 3", "q"])
+    assert run_menu(sources, None, ask=lambda _: next(answers)) == 0
+    assert ran == [["lanchiem1"], ["bieutinh1", "CAM_CONG"]]
+    assert loads == [["bang_ron", "crowd", "lan_chiem", "phong_ue"]]   # nạp 1 lần, đủ cho mọi nguồn

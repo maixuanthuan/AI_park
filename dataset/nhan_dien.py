@@ -1,7 +1,7 @@
 """Thử nhận diện + gán nhãn tự động, MỘT công cụ: chạy model trên clip theo danh sách lớp dataset/classes.yaml.
 
   conda activate yoloe
-  python dataset/nhan_dien.py data/lan_chiem [--fps 0] [--label-sec 2] [--out dataset/out/x]
+  python dataset/nhan_dien.py data/lanchiem1.mp4 [--fps 0] [--label-sec 2] [--out dataset/out/x]
 
 Mỗi lớp lấy từ COCO (YOLO26n, model đếm hiện tại) và / hoặc YOLOE (gõ chữ). Ra trong <out>/:
   ve/<clip>.avi              video đã vẽ (nguồn chính của mỗi lớp, mỗi lớp một màu) -> nhìn tận mắt lớp nào nhận được

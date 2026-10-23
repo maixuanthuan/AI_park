@@ -10,7 +10,14 @@ SUPERANIMAL, POSE_MODEL, DETECTOR = "superanimal_quadruped", "hrnet_w32", "faste
 
 def load(device="auto", max_individuals=10):
     """-> hàm infer(ảnh BGR của OpenCV, min_score) -> (khung xywh pixel, độ tin khung, keypoint (n, số điểm, 3), tên điểm)."""
+    import logging
+    import warnings
+
     import numpy as np
+    # Log vô hại của DeepLabCut lấn hết dòng quan trọng (robo 2026-10-23: 16 dòng "Found invalid empty/null/None value"
+    # của config mẫu SuperAnimal + cảnh báo "horizontal flips" chỉ dành cho lúc train). Lỗi thật (ERROR) vẫn in.
+    logging.getLogger("deeplabcut").setLevel(logging.ERROR)
+    warnings.filterwarnings("ignore", message="Be careful! Do not train pose models with horizontal flips")
     from deeplabcut.pose_estimation_pytorch.apis.utils import get_inference_runners
     from deeplabcut.pose_estimation_pytorch.config.pose import PoseConfig
     from deeplabcut.pose_estimation_pytorch.modelzoo.utils import get_super_animal_snapshot_path

@@ -2,7 +2,7 @@
 biểu tình không ("có băng rôn gần người, giữ liên tục hold giây"). Chạy OFFLINE trên clip / ảnh, ngoài DeepStream.
 Trả lời câu hỏi trước khi xây, không phải code sản phẩm.
 
-  python demo/tools/thu_bang_ron.py --data data/bang_ron --out demo/out/bang_ron [--hold 3] [--fps 5]
+  python demo/tools/thu_bang_ron.py --data <thư mục có co/ và khong/> --out demo/out/bang_ron [--hold 3] [--fps 5]
 
 Dữ liệu (clip .mp4 .mkv .avi .mov .webm, hoặc ảnh .jpg .png; tên đặt tuỳ ý):
   <data>/co/     CÓ người CẦM băng rôn / biển suốt clip (biểu tình, tuần hành, cổ động)  -> muốn: báo

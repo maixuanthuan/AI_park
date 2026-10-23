@@ -11,34 +11,34 @@ Env cũ `yoloe` vẫn chạy được mọi chức năng TRỪ `phong_ue`. Khôn
 Model tự tải lần đầu: YOLO / YOLOE vào `demo/models/` (YOLO26n dùng `people_count/models/yolo26n.pt` nếu có);
 DeepLabCut (SuperAnimal-Quadruped) vào thư mục cài deeplabcut. Sau đó chạy offline.
 
-## Chạy nhanh nhất: `--demo` (không sửa lệnh)
-Mọi clip thử nằm trong **`data/<chức năng>/`** (thư mục con tuỳ ý, vd `co/` có phóng uế, `khong/` để xem có báo nhầm không).
-Tên thư mục = chức năng chạy; `+` = nhiều chức năng. Camera thật: ghi TÊN biến `.env` vào `camera.txt` của thư mục:
-```
-data/
-├── count+crowd/      # mọi video ở đây chạy count + crowd
-│   └── camera.txt    # tuỳ chọn: mỗi dòng 1 TÊN biến trong people_count/.env, vd CAM_CONG_CHINH
-├── bang_ron/co/, khong/
-├── lan_chiem/
-└── phong_ue/co/, khong/
-```
+## Chạy demo (từ thư mục `AI_park`, env `dlc`)
+**1. Bỏ video vào `data/`, tên = tình huống** (+ số hoặc ghi chú phía sau):
+
+| Tên video bắt đầu bằng | Chạy |
+|---|---|
+| `demnguoi` | đếm người / vật |
+| `dongnguoi` | đếm + đám đông |
+| `bieutinh` | đám đông + băng rôn |
+| `bangron` | băng rôn |
+| `lanchiem` | lấn chiếm |
+| `phongue` | phóng uế |
+
+Ví dụ: `data/bieutinh1.mp4`, `data/lanchiem2.mp4`, `data/phongue_cho_den.mp4`. Tên chức năng gốc (`lan_chiem1.mp4`) vẫn được.
+
+**2. Mở menu, khách muốn xem gì chọn số đó** (chạy xong quay lại menu; model nạp 1 lần lúc mở):
 ```bash
 cd ~/PycharmProjects/AI_park && conda activate dlc
-python demo/run_demo.py --demo --show            # thêm --sec 300 nếu có camera (mặc định camera chạy tới Ctrl+C)
+python demo/run_demo.py
 ```
-Thư mục trống: bỏ qua. Tên thư mục sai, biến camera chưa khai -> báo rõ, không chạy. Hai video trùng tên file -> đổi tên một cái.
-Link camera (có mật khẩu) chỉ nằm trong `people_count/.env` (`cp -n people_count/.env.example people_count/.env` lần đầu).
-`data/` không vào git: video của khách không bao giờ lên GitHub.
+`2` = chạy mục 2, `1 3` = chạy mục 1 rồi 3, `a` = chạy hết, `q` = thoát. Đang chạy muốn dừng: bấm `q` trên cửa sổ video hoặc Ctrl+C
+-> về menu. Video tên sai: in "bỏ qua" kèm lý do, không có trong menu.
 
-## Chạy (từ thư mục `AI_park`)
-Clip thử để trong `data/<bài>/` (vd `data/phong_ue/co/`, `data/phong_ue/khong/`): trong project, `.gitignore` chặn, không vào git.
-```bash
-conda activate dlc
-python demo/run_demo.py people_count/videos/park1.mp4=count,crowd data/bang_ron/co/bieutinh.mp4=bang_ron data/lan_chiem/via_he.mp4=lan_chiem
-python demo/run_demo.py data/phong_ue/co/dogpoop.mp4=phong_ue
-python demo/run_demo.py CAM_01_URL=count,crowd --sec 120 --show      # camera: tên biến trong people_count/.env
-python demo/run_demo.py -h                                            # mọi tuỳ chọn
-```
+**Camera thật** (linh hoạt): thêm `CAM_X=rtsp://...` vào `people_count/.env` (lần đầu `cp -n people_count/.env.example
+people_count/.env`), rồi ghi vào `data/camera.txt` mỗi dòng `CAM_X=<tình huống>[,<tình huống>]` hoặc `CAM_X=all` -> camera hiện trong menu.
+
+Lệnh khác: `python demo/run_demo.py data/bieutinh1.mp4 CAM_X=lanchiem --show` (chạy thẳng, không menu);
+`python demo/run_demo.py --demo` (chạy hết `data/` một lượt). `data/` không vào git: video của khách không lên GitHub.
+
 | Chức năng | Làm gì | Ngưỡng demo (tuỳ chọn) |
 |---|---|---|
 | `count` | đếm người / chó / mèo trong khung, báo cáo trung vị / max | `--report-sec 30` |
