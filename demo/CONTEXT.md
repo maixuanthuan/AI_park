@@ -1,65 +1,95 @@
 # CONTEXT — PoC / demo (demo/, dataset/)
 
-Cập nhật: 2026-10-21. Cách làm việc: `docs/CACH_LAM_VIEC.md`. Kiến trúc hệ thật (DeepStream, nhiều camera): `docs/KIEN_TRUC.md`.
-Engine DeepStream + module đếm / đám đông: `people_count/CONTEXT.md`.
+Cập nhật: 2026-10-23. Cách làm việc: `docs/CACH_LAM_VIEC.md`. Kiến trúc hệ thật (DeepStream, nhiều camera): `docs/KIEN_TRUC.md`.
+Engine DeepStream + module đếm / đám đông: `people_count/CONTEXT.md`. Phát hiện camera bị che: `camera_tamper/CONTEXT.md`.
 
 # PHẦN 1 — ĐỌC HẾT MỖI PHIÊN
 
 ## Hệ là gì (một câu)
-Công cụ PoC: đưa video / camera vào, **mỗi nguồn gán chức năng riêng**, ra video đã vẽ + file event, để khách thấy
-**kết quả khả thi**. Không phải sản phẩm.
+Công cụ PoC: đưa video / camera vào, **mỗi nguồn gán chức năng riêng**, ra video đã vẽ + file event + ảnh bằng chứng, để khách
+thấy **kết quả khả thi**. Không phải sản phẩm.
 
-## Hướng (Thuận chốt 2026-10-21)
-- **PoC trước, tối ưu sau.** Khách chỉ quan tâm kết quả; DeepStream, nhiều camera, tối ưu tài nguyên làm SAU khi khách
-  thấy giá trị. Tối ưu đã đo được cất lại (people_count/CONTEXT, mục "Tối ưu: đã đo, việc cất lại"), không bỏ.
-- PoC chạy **ultralytics Python thuần**, vài camera / video. Kiến trúc vẫn giữ bản tổng quát.
+## Hướng (Thuận chốt)
+- **PoC trước, tối ưu sau.** Khách chỉ quan tâm kết quả; DeepStream, nhiều camera, tối ưu tài nguyên làm SAU khi khách thấy giá trị.
 - **Perception trước, logic sau**: chưa chắc nhận ra được vật thì chưa viết logic. Mỗi lớp mới: thử nhận diện trên clip trước.
-- Hệ **không đoán ý định** từ hình: chỉ có số lượng / loại vật / thời gian -> logic suy ra tình huống.
-- Một **model chung** cho profile overview là đích (làm dataset song song); PoC tạm dùng 2 model (YOLO26n + YOLOE).
-- CONTEXT không gửi kèm mỗi gói; Claude báo khi thông tin bắt đầu lệch / chồng chéo, Thuận đồng ý mới cập nhật.
+- Hệ **không đoán ý định** từ hình: chỉ có số lượng / loại vật / dáng / thời gian -> logic suy ra tình huống.
+- **Không chỉnh model / ngưỡng theo clip không đại diện** (quay tay, YouTube): clip chỉ để kiểm hệ CHẠY và cơ chế ĐÚNG; độ chính xác
+  đo trên camera thật của khách. Logic sai thì sửa ngay (bằng test dữ liệu giả), không chờ camera.
+- Clip "đúng chuẩn tình huống" rất khó tìm: demo bằng clip có đủ yếu tố, **nói trước giới hạn của từng clip** với khách
+  (2026-10-23). Sau demo mới tìm / dựng clip chuẩn hơn.
+- **Mọi thứ nằm TRONG project**: clip thử ở `AI_park/data/<bài>/` (`.gitignore` chặn `/data/`), không tạo thư mục ở home.
+- Một **model chung** cho profile overview là đích (dataset làm song song); PoC tạm dùng nhiều model.
+- CONTEXT không gửi kèm mỗi gói; Claude báo khi thông tin lệch / chồng chéo, Thuận đồng ý mới cập nhật.
 
-## Đang ở đâu (2026-10-21 cuối ngày)
-- `demo/run_demo.py`: 4 chức năng, mỗi nguồn `nguồn=chức năng[,chức năng]` (file video hoặc tên biến camera trong `people_count/.env`):
-  | Chức năng | Model | Luật | Trạng thái |
-  |---|---|---|---|
-  | `count` | YOLO26n (COCO) | đếm hiện diện trong vùng, báo cáo trung vị / max (`people_count/counter.py`) | chạy, demo park1 OK |
-  | `crowd` | YOLO26n | người >= `--min-people`, quá nửa thời gian `--hold` s -> báo; hết chỉ xét dữ liệu sau lúc báo (`people_count/crowd.py`) | chạy, demo park1 OK |
-  | `bang_ron` | YOLOE gõ chữ | băng rôn GẦN NGƯỜI, quá nửa thời gian `--hold` s (`demo/bang_ron.py`) | chạy, 1 clip biểu tình báo, phố băng rôn treo không báo |
-  | `lan_chiem` | COCO + YOLOE theo `dataset/classes.yaml` | logic B: vật cùng lớp trùng chỗ (IoU 0.5), quá nửa số mẫu (5 s/mẫu) trong `--dwell` s; báo theo khung kèm danh sách vật (`demo/lan_chiem.py`) | **code + test xong, CHƯA chạy trên clip thật** |
-- `dataset/`: `classes.yaml` (13 lớp, danh sách DUY NHẤT cho model chung, thứ tự = id nhãn) + `nhan_dien.py` (thử nhận diện từng lớp
-  COCO vs YOLOE trên clip + gán nhãn tự động chuẩn YOLO mỗi 2 s để sửa trong CVAT).
-- Test (không cần GPU / model): `demo/tests` 9, `dataset/tests` 4, `people_count/tests` 64, `camera_tamper/tests` 57.
-- Git: nhánh `poc-overlay` (tách từ `bench-tools`, chưa gộp main); đã push tới commit demo/ + dataset/ (v10). **Gói v11
-  (`lan_chiem`, `--fps 0`) đã áp + test xanh, kiểm lại đã commit chưa** (`git status --short`).
+## Đang ở đâu (2026-10-23)
+`demo/run_demo.py`, một lệnh, mỗi nguồn `nguồn=chức năng[,chức năng]` (file video hoặc tên biến camera trong `people_count/.env`):
+
+| Chức năng | Perception | Luật | Trạng thái demo |
+|---|---|---|---|
+| `count` | YOLO26n (COCO) | đếm hiện diện, báo cáo trung vị / max (`people_count/counter.py`) | chạy, park1 OK |
+| `crowd` | YOLO26n | người >= `--min-people` quá nửa `--hold` s; hết chỉ xét dữ liệu sau lúc báo (`people_count/crowd.py`) | chạy, park1 OK |
+| `bang_ron` | YOLOE gõ chữ | băng rôn GẦN NGƯỜI quá nửa `--hold` s (`demo/bang_ron.py`) | chạy, mới 1 clip biểu tình |
+| `lan_chiem` | COCO + YOLOE theo `dataset/classes.yaml` | vật cùng lớp trùng chỗ (IoU 0.5) quá nửa mẫu (5 s/mẫu) trong `--dwell` s -> báo; **hết khi không thấy lại lần nào trong dwell** (`demo/lan_chiem.py`) | logic xong; clip có là quay tay (chỉ báo đoạn máy đứng yên, đúng giới hạn) |
+| `phong_ue` | DeepLabCut SuperAnimal-Quadruped (detector + 39 keypoint), từng frame (`demo/dlc_pose.py`) | động vật **ngồi xổm**: hông / thân < `--squat-ratio` 0.56 quá nửa `--squat-hold` 3 s (`demo/phong_ue.py`) | chạy đúng khi con vật đủ to, nhìn ngang (clip 2: báo 18.9-22.5 s, đáp án 16-22 s); con vật nhỏ không bắt được |
+
+- Mọi `alert_start` kèm **ảnh bằng chứng** `demo/out/<giờ>/bang_chung/*.jpg` (frame đã vẽ), đường dẫn ở `evidence.snapshot`.
+- `--show`: xem trực tiếp lúc chạy (`q` sang nguồn tiếp). Overlay `phong_ue`: C (cổ), D (gốc đuôi), P (chân sau), thanh hông
+  đứng + vạch ngưỡng (chân qua vạch = đứng / chưa tới = ngồi xổm), dòng trên cùng % ngồi xổm trong cửa sổ.
+- `dataset/`: `classes.yaml` (13 lớp, danh sách DUY NHẤT cho model chung) + `nhan_dien.py` (thử nhận diện + nhãn tự động YOLO cho CVAT).
+- Test (không cần GPU / model): `demo/tests` 15, `dataset/tests` 4, `people_count/tests` 64, `camera_tamper/tests` 57.
+- Env **`dlc`** chạy được MỌI chức năng (thay `yoloe`; `yoloe` vẫn chạy được trừ `phong_ue`).
+- Git: nhánh `poc-overlay` (chưa gộp main). Đã push: lan_chiem tách ngưỡng (`21cb4ae`), phong_ue v13. **v14b (nhãn animal, ảnh bằng
+  chứng, overlay mới, `/data/`) kiểm đã commit chưa** (`git status --short`).
 
 ## Phiên tới làm gì
-1. Chạy `lan_chiem` trên clip vỉa hè (lệnh ở PHẦN 2). Clip phải **camera đứng yên**; quay tay thì không báo là đúng giới hạn.
-   Xem: xe / ghế đỗ lâu có khung đỏ, xe chạy qua chỉ khung cam. Commit v11 nếu chưa.
-2. Thuận chọn tiếp: **phóng uế vật nuôi** (bài cuối nhóm overview) hoặc **quy trình gán nhãn CVAT** cho model chung.
-3. Mở PR `poc-overlay -> main` (gồm cả commit `bench-tools`), Thuận tự duyệt + gộp.
+1. Chuyển clip còn ở home vào project: `~/bang_ron` -> `data/bang_ron`, `~/via_he` -> `data/via_he` (lệnh ở PHẦN 2 đã dùng
+   đường dẫn mới). Commit v14b + CONTEXT này nếu chưa; mở PR `poc-overlay -> main`, Thuận tự duyệt + gộp.
+2. Thuận chọn: luật **biểu tình** (đông người + băng rôn cùng lúc) / **lan_chiem trên camera văn phòng** (kê ghế, dựng xe vài phút:
+   camera cố định thật, gần như miễn phí) / quy trình sửa nhãn **CVAT** cho model chung.
 
 ## Quyết định và lý do
 | Quyết định | Lý do |
 |---|---|
-| PoC bằng ultralytics, không DeepStream | khách chỉ cần thấy kết quả; logic tách khỏi perception nên dùng lại nguyên khi lên DeepStream |
-| Demo theo `nguồn=chức năng` | thực tế mỗi camera chỉ làm chức năng của khu vực nó, không phải 1 nguồn làm tất cả |
-| "Quá nửa thời gian trong cửa sổ" cho crowd / bang_ron / lan_chiem | model nhận chập chờn (số người nhảy 8-10-7; băng rôn có 38% thời gian nhưng liên tục dài nhất 4 s); luật "liên tục" không bao giờ báo |
-| Hết cảnh báo chỉ xét dữ liệu SAU lúc báo | demo park1: cảnh báo 82.3 -> 86.0 bật tắt 3.7 s vì cửa sổ "hết" còn chứa số thấp trước lúc báo (test D10) |
-| Băng rôn phải "gần người" | đường phố VN đầy băng rôn khẩu hiệu treo cố định; clip phố Đà Nẵng: 0% báo ở ngưỡng 0.3 |
-| Lấn chiếm không dùng tracker (logic B) | dwell tính bằng phút, mã tracker đổi khi bị che -> không bao giờ đủ thời gian |
-| Lấn chiếm báo theo khung kèm danh sách vật, đổi danh sách không báo lại | 1 quán cóc không thành mười mấy tin cho người quản lý |
-| Một file `dataset/classes.yaml` cho demo, gán nhãn, train | không lệch danh sách lớp giữa các nơi; thứ tự = id nhãn, chỉ thêm vào cuối |
-| Gán nhãn ĐỦ mọi lớp trong mỗi ảnh | ảnh chỉ khoanh băng rôn, bỏ trống người -> model học "người là nền", đếm người kém đi ngầm |
-| Môi trường conda riêng `yoloe` | không nâng ultralytics trong `deepcv` (Detect2026 đang dùng) |
-| Overlay video chỉ hiện số HIỆN DIỆN (không trung vị) | người xem đếm khung trên hình để đối chiếu; trung vị nằm trong file event |
+| PoC bằng Python thuần (ultralytics, DeepLabCut), không DeepStream | khách chỉ cần thấy kết quả; logic tách khỏi perception nên dùng lại nguyên khi lên DeepStream |
+| Demo theo `nguồn=chức năng` | thực tế mỗi camera chỉ làm chức năng của khu vực nó |
+| Một nguồn sai thì không chạy gì, báo đủ lỗi một lượt | gõ nhầm đường dẫn trước buổi demo phải biết ngay, không chạy xong mới thấy thiếu nguồn |
+| "Quá nửa thời gian trong cửa sổ" cho crowd / bang_ron / lan_chiem / phong_ue | model nhận chập chờn (người 8-10-7; băng rôn 38% thời gian, liên tục dài nhất 4 s); luật "liên tục" không bao giờ báo |
+| Hết cảnh báo chỉ xét dữ liệu SAU lúc báo (crowd, bang_ron, phong_ue) | demo park1: báo rồi tắt sau 3.7 s vì cửa sổ "hết" còn số thấp trước lúc báo (test D10) |
+| lan_chiem: vào = quá nửa mẫu, **ra = không thấy lại lần nào trong dwell** | 1 ghế nhận ~50% số lần -> 174 event / 15 phút (giả lập 2026-10-22); chỉ áp D10 còn 43; tách ngưỡng -> 1 (test M10). Giá: dọn đi thật thì dwell s sau mới hết |
+| Băng rôn phải "gần người" | đường phố VN đầy băng rôn treo cố định; clip phố Đà Nẵng: 0% báo ở ngưỡng 0.3 |
+| Lấn chiếm không dùng tracker | dwell tính bằng phút, mã tracker đổi khi bị che |
+| Lấn chiếm báo theo khung kèm danh sách vật, đổi danh sách không báo lại | 1 quán cóc không thành mười mấy tin |
+| phong_ue: yêu cầu = **động vật** (không phân biệt loài, tiểu / đại tiện) + ảnh bằng chứng; BA tư vấn khách | khách cần biết có phóng uế + bằng chứng, không cần loài; "phóng uế" vốn gồm cả tiểu -> chó cái ngồi tiểu không còn là báo nhầm |
+| phong_ue: keypoint + định nghĩa TỰ VIẾT (hông / thân), không train | vận hành chỉ suy luận; hình học dựa trên cơ chế (hông hạ khi ngồi xổm); test bằng dữ liệu giả |
+| Chiều cao hông tính bằng PIXEL, chia chiều dài thân (cổ -> gốc đuôi) | toạ độ tỉ lệ 0..1 khác thước x / y khi khung không vuông; chia thân để to / nhỏ, gần / xa so được |
+| Giữ detector của DeepLabCut (Faster R-CNN), chưa thay YOLO | yêu cầu "mọi động vật" -> không cần biết loài; YOLO26n cũng không thấy con vật nhỏ (đo 2026-10-22); thay là đổi crop của model pose -> phải đo lại. Lý do còn lại (tốc độ) để sau demo |
+| Không `video_adapt` của DeepLabCut | tự huấn luyện: độ tin gốc đuôi 0.7 -> 0.9 nhưng tách không đổi (0.80 -> 0.79), detector học lệch bắn vào màn chữ + người (không có ảnh âm) |
+| `demo/dlc_pose.py` là file DUY NHẤT import deeplabcut | đổi thư viện keypoint chỉ sửa 1 file; test không cần DeepLabCut |
+| `Obj` thêm trường `kp` (mặc định None) | hợp đồng perception -> logic chỉ THÊM, mọi chỗ tạo Obj 4 trường giữ nguyên (64 test people_count khoá) |
+| Ảnh bằng chứng cho MỌI alert_start, chụp frame đã vẽ | `evidence.snapshot` có sẵn trong envelope cho mọi chức năng; ảnh đã vẽ thấy luôn lý do báo |
+| Overlay chỉ dùng 3 màu sẵn có (trắng / vàng / đỏ) | không đổi hợp đồng vẽ của pipeline.py (DeepStream) |
+| Một file `dataset/classes.yaml` cho demo, gán nhãn, train | không lệch danh sách lớp; thứ tự = id nhãn, chỉ thêm vào cuối |
+| Gán nhãn ĐỦ mọi lớp trong mỗi ảnh | ảnh chỉ khoanh băng rôn, bỏ trống người -> model học "người là nền" |
+| Overlay count chỉ hiện số HIỆN DIỆN | người xem đếm khung trên hình để đối chiếu; trung vị nằm trong file event |
+
+## Đã thử và bỏ
+- `video_adapt` của DeepLabCut (lý do ở bảng trên).
+- Chạy DeepLabCut ra file `.h5` rồi mới chạy luật (2 bước): demo phải một lệnh, liền mạch -> gọi DeepLabCut từng frame.
+- Vẽ đường chéo gốc đuôi -> chân sau: không khớp phép đo (đo theo chiều ĐỨNG), nhìn không hiểu -> thanh đứng + vạch ngưỡng.
+- Thư mục dữ liệu ở home (`~/phong_ue`, `~/bang_ron`, `~/via_he`): bị xoá nhầm, mất clip -> `AI_park/data/`.
 
 ## Việc mở
-- **Băng rôn**: mới 1 clip "co" (điện thoại, cận); chưa thử góc camera cao / xa. Trong clip vỉa hè YOLOE bắn "banner" 14%
-  thời gian, nhiều khả năng **biển hiệu cửa hàng** -> khi làm dataset phải có ảnh biển hiệu làm mẫu "không phải băng rôn".
+- **phong_ue, con vật nhỏ**: clip 1 (~75x35 px, mắt cá, góc xa) và clip 3 (~50x55 px) không bắt được. Cơ chế: model co ảnh về 640 px
+  -> con vật còn ~35 px. Hướng: cắt vùng quan tâm (ROI) trước model / chia ô (tiling) / **yêu cầu lắp đặt** (con vật trong vùng đủ to,
+  viết theo px/m ở điểm xa nhất để đội lắp tự kiểm bằng thước 1 m). Cỡ tối thiểu chưa đo (Thuận: để khi có camera thật).
+- phong_ue, con vật **quay mặt vào camera**: thân co ngắn trên ảnh -> hông / thân sai; luật 2D chỉ đúng khi nhìn ngang / chéo.
+- phong_ue: chó đực nhấc chân đi tiểu không bắt được (hông không hạ); **mèo** ngồi nghỉ hông vốn thấp -> có thể báo nhầm, chưa có clip;
+  ngưỡng 0.56 / 3 s mới đo trên 1 clip; `--dog-conf` 0.5 chưa đo (clip 2: khung 0.99).
 - **Biểu tình** = đám đông + băng rôn cùng lúc: chưa có luật kết hợp (hiện 2 cảnh báo riêng).
-- Vùng PoC = cả khung; vùng thật (vỉa hè, tránh ghế đá / bồn cây) chưa có cách khai trong demo.
-- Lấn chiếm: tỉ lệ có mặt sát 50% có thể bật tắt; hai vật đỗ chồng chỗ tính là một; giờ được phép bán hàng chưa có.
-- `tamper` chưa nối vào demo (chỉ vài dòng khi cần). Chữ trên video không dấu (OpenCV không vẽ được dấu).
+- Băng rôn mới 1 clip "co" (điện thoại, cận); trong clip vỉa hè YOLOE bắn "banner" 14% (nghi biển hiệu) -> dataset cần mẫu biển hiệu.
+- Vùng PoC = cả khung; vùng thật (vỉa hè, khu cỏ) chưa khai được trong demo.
+- Lấn chiếm: hai vật đỗ chồng chỗ tính là một; giờ được phép bán hàng chưa có.
+- `tamper` chưa nối vào demo. Chữ trên video không dấu (OpenCV không vẽ được dấu).
 - Model chung: tiêu chí trước khi dùng = băng rôn tốt hơn YOLOE **và** người không kém YOLO26n gốc; tách bộ đánh giá THEO CLIP.
 
 ---
@@ -68,38 +98,52 @@ Công cụ PoC: đưa video / camera vào, **mỗi nguồn gán chức năng ri�
 
 ## Lệnh
 ```bash
-cd ~/PycharmProjects/AI_park && conda activate yoloe
-python demo/run_demo.py people_count/videos/park1.mp4=count,crowd ~/bang_ron/co/bieutinh.mp4=bang_ron ~/via_he/via_he.mp4=lan_chiem --dwell 30
+cd ~/PycharmProjects/AI_park && conda activate dlc
+python demo/run_demo.py people_count/videos/park1.mp4=count,crowd data/bang_ron/co/bieutinh.mp4=bang_ron data/via_he/via_he.mp4=lan_chiem --dwell 30
+python demo/run_demo.py data/phong_ue/co/dogpoop2.mp4=phong_ue --show
 python demo/run_demo.py CAM_01_URL=count,crowd --sec 120 --show        # camera: tên biến trong people_count/.env
-python dataset/nhan_dien.py ~/via_he --out dataset/out/via_he           # thử nhận diện + nhãn tự động
-python people_count/tools/thu_bang_ron.py --data ~/bang_ron --out people_count/out/bang_ron   # thử khả thi băng rôn
-conda activate deepcv && python -m pytest -q demo/tests && python -m pytest -q dataset/tests && python -m pytest -q people_count/tests
+python dataset/nhan_dien.py data/via_he --out dataset/out/via_he       # thử nhận diện + nhãn tự động
+python -m pytest -q demo/tests && python -m pytest -q dataset/tests && python -m pytest -q people_count/tests
 ```
-- Ra: `demo/out/<giờ>/<nguồn>.avi` + `events.jsonl`; `dataset/out/<tên>/ve/*.avi`, `thong_ke.csv`, `yolo/` (images, labels, data.yaml).
-- Xem video: `vlc <file>` (không mở cả thư mục). Video mượt = xét mọi frame (`--fps 0`, mặc định); `--fps 2` nhanh nhưng giật.
+- Ra: `demo/out/<giờ>/<nguồn>.avi` + `events.jsonl` + `bang_chung/*.jpg`; `dataset/out/<tên>/ve/*.avi`, `thong_ke.csv`, `yolo/`.
+- Xem video: `vlc <file>`. Video mượt = xét mọi frame (`--fps 0`, mặc định); `--fps 2` nhanh nhưng giật.
 - Đóng gói gửi đi: `tools/pack.sh` (theo git, chặn `.env` và giá trị bí mật). Không nén tay.
 
-## Môi trường `yoloe` (robo)
-`conda create -n yoloe python=3.11`; `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121`;
-`pip install ultralytics "git+https://github.com/ultralytics/CLIP.git" python-dotenv`. Model tự tải vào `demo/models/`
-(`yoloe-11s-seg.pt` ~27 MB); YOLO26n dùng `people_count/models/yolo26n.pt`. Claude thử trên ultralytics 8.4.183 (CPU).
+## Môi trường `dlc` (robo)
+```bash
+conda create -y -n dlc python=3.10 && conda activate dlc
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+pip install --pre "deeplabcut"                    # 3.0.2; --pre kéo vài thư viện bản rc, chưa thấy lỗi
+pip install ultralytics "git+https://github.com/ultralytics/CLIP.git" python-dotenv pytest
+```
+- Claude kiểm 2026-10-22 (Python 3.10, CPU): deeplabcut 3.0.2 + ultralytics 8.4.183 chạy chung, đủ test, `cv2` có GUI (QT5).
+- Model tự tải lần đầu: YOLO / YOLOE vào `demo/models/`; DeepLabCut vào thư mục cài deeplabcut (HuggingFace). Sau đó offline.
+- Không nâng ultralytics trong `deepcv` (Detect2026 đang dùng). GPU robo 6 GB: train trong DeepLabCut (vd `video_adapt`) cần
+  `video_adapt_batch_size=1` (batch 8 hết VRAM; batch 1 dùng ~3.6 GB).
 
-## Số đo (2026-10-21, robo trừ khi ghi khác)
+## Số đo (robo trừ khi ghi khác; chưa có đáp án = chưa phải độ chính xác)
 | Số đo | Giá trị | Nguồn |
 |---|---|---|
-| Băng rôn, 1 clip "co" (biểu tình, điện thoại, ~60 s) + 2 clip "khong" | ngưỡng 0.3: bắt 1/1, báo nhầm 0/2; % thời gian co 38% / khong 2%; liên tục dài nhất co 4.0 s | `thu_bang_ron.py --fps 30` |
-| Băng rôn, phố Đà Nẵng nhiều băng rôn treo (`park1_2min`) | 0% ở ngưỡng 0.2 và 0.3 | như trên |
-| Demo `bieutinh=bang_ron` (hold 10) | 2 cặp start/end (10.0-25.9 s, 37.0-47.0 s) | `run_demo.py` |
-| Demo `park1=count,crowd` (min 5, hold 10) | 7 cặp, đóng cuối 355.0 s, 23 báo cáo đếm | `run_demo.py` |
-| Engine DeepStream `park1` crowd (min 6, hold/clear 10) | 7 cặp, mọi cặp >= 10 s sau sửa D10, đóng cuối 354.8 s | `run_engine.py --debug-out` |
-| Vỉa hè `via_he.mp4` (1 clip, 25 fps, mọi frame), % thời gian thấy COCO / YOLOE | xe máy 42/44, ô tô 23/25, ghế 15/15, ô dù 9/14, bàn 4/7, xe đạp 3/10; chỉ YOLOE: xe đẩy 9, sạp 8, gánh 2 (độ tin 0.37); banner 14 (nghi biển hiệu) | `nhan_dien.py --fps 0` |
-- Bảng trên chỉ là "model có bắn", CHƯA có đáp án (đúng / sai) -> chưa phải độ chính xác.
+| Băng rôn, 1 clip "co" + 2 clip "khong" | ngưỡng 0.3: bắt 1/1, nhầm 0/2; % thời gian co 38% / khong 2%; liên tục dài nhất 4.0 s | `thu_bang_ron.py`, 2026-10-21 |
+| Băng rôn, phố Đà Nẵng nhiều băng rôn treo | 0% ở ngưỡng 0.2 và 0.3 | như trên |
+| Demo `park1=count,crowd` (min 5, hold 10) | 7 cặp, đóng cuối 355.0 s, 23 báo cáo đếm | `run_demo.py`, 2026-10-21 |
+| Vỉa hè `via_he.mp4` (quay tay), % thời gian thấy COCO / YOLOE | xe máy 42/44, ô tô 23/25, ghế 15/15, ô dù 9/14, bàn 4/7, xe đạp 3/10; chỉ YOLOE: xe đẩy 9, sạp 8, gánh 2 | `nhan_dien.py`, 2026-10-21 |
+| lan_chiem trên `via_he` (dwell 30, code cũ) | 3 cặp: ghế 35-55 s, bàn 80-85 s, ô tô 195-210 s | `run_demo.py`, 2026-10-22 |
+| lan_chiem giả lập: ghế nhận 50% / 15 phút | code cũ 174 event, chỉ D10 43, tách ngưỡng **1** | test M10, 2026-10-22 |
+| phong_ue clip 2 (`dogpoop2`, 1280x720 15 fps, chuông cửa, chó đen ~180x100 px), hông / thân | đứng 0.64 / phóng uế 0.54 (trung vị, cùng cỡ thân ~100 px); tách theo frame 0.80; góc gối sau 0.55 (không dùng) | `.h5` DeepLabCut, đáp án 16-22 s, 2026-10-22 |
+| phong_ue clip 2, luật đầy đủ (0.56, 3 s) | báo 18.9 s, hết 22.5 s; không báo nhầm | `run_demo.py` robo + phát lại `.h5`, khớp từng số |
+| phong_ue clip 2, ngưỡng 0.58 (mô phỏng tay, cửa sổ chỉ tính frame đo được) | báo nhầm 10.5 s lúc chó cúi ngửi -> biên an toàn HẸP | 2026-10-22 |
+| DeepLabCut tốc độ, 1280x720 | detector ~10.8 frame/s (nút cổ chai), pose ~67 frame/s | log robo, 2026-10-22 |
+| Con vật nhỏ: YOLO26n thấy chó / mèo (3 frame/s) | clip 1 (~75x35 px*): 0/157 ở 640, **30/157 ở 1280**; clip 3 (~50x55 px*): 13/52 ở 640, 32/52 ở 1280; clip 2: 18/120 ở 640 (DeepLabCut gần như mọi frame) | Claude, CPU, 2026-10-22. *ước lượng bằng mắt, không phải model đo |
 
 ## Cấu trúc
 | File | Vai trò |
 |---|---|
-| `demo/run_demo.py` | đọc `nguồn=chức năng`, chạy model cần thiết cho từng nguồn, đưa vào module logic, vẽ bằng `draw()` của module, ghi avi + jsonl, bảng tóm tắt |
-| `demo/bang_ron.py`, `demo/lan_chiem.py` | module logic PoC (không IO, thời gian truyền vào), cùng khuôn `update / flush / draw` với `people_count/counter.py`, `crowd.py` |
+| `demo/run_demo.py` | đọc `nguồn=chức năng`, chỉ nạp model / thư viện cần, đưa vào module logic, vẽ bằng `draw()`, ghi avi + jsonl + ảnh bằng chứng, bảng tóm tắt |
+| `demo/dlc_pose.py` | DeepLabCut từng frame (lọc khung yếu / suy biến TRƯỚC khi chấm keypoint) + `to_animal_objs` -> `Obj("animal", kp=...)` |
+| `demo/bang_ron.py`, `lan_chiem.py`, `phong_ue.py` | module logic PoC (không IO, thời gian truyền vào), khuôn `update / flush / draw` như `people_count/counter.py`, `crowd.py` |
+| `people_count/meta.py` | hợp đồng perception -> logic: `FrameMeta`, `Obj(cls, conf, bbox, track_id, kp=None)`, `Line`, `Text` |
 | `dataset/classes.yaml` | 13 lớp: person, dog, cat, banner, motorcycle, bicycle, car, umbrella, chair, table, vendor_cart, shoulder_pole, stall |
 | `dataset/nhan_dien.py` | thử nhận diện (bảng COCO vs YOLOE) + nhãn tự động YOLO cho CVAT |
 | `people_count/tools/thu_bang_ron.py` | thử khả thi băng rôn theo clip (thư mục `co/`, `khong/`) |
+| `data/<bài>/co`, `khong` | clip thử, trong project, không vào git |

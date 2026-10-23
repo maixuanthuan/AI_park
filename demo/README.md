@@ -15,7 +15,7 @@ DeepLabCut (SuperAnimal-Quadruped) vào thư mục cài deeplabcut. Sau đó ch�
 Clip thử để trong `data/<bài>/` (vd `data/phong_ue/co/`, `data/phong_ue/khong/`): trong project, `.gitignore` chặn, không vào git.
 ```bash
 conda activate dlc
-python demo/run_demo.py people_count/videos/park1.mp4=count,crowd ~/bang_ron/co/bieutinh.mp4=bang_ron ~/via_he/via_he.mp4=lan_chiem
+python demo/run_demo.py people_count/videos/park1.mp4=count,crowd data/bang_ron/co/bieutinh.mp4=bang_ron data/via_he/via_he.mp4=lan_chiem
 python demo/run_demo.py data/phong_ue/co/dogpoop.mp4=phong_ue
 python demo/run_demo.py CAM_01_URL=count,crowd --sec 120 --show      # camera: tên biến trong people_count/.env
 python demo/run_demo.py -h                                            # mọi tuỳ chọn
