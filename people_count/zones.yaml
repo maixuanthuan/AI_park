@@ -9,7 +9,7 @@ zones:
     function: count
     polygon: [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]   # cả khung
     ref_size: [1920, 1080]
-    params: {report_sec: 30}       # 30s: cùng nhịp bản thử ds_count.py để so số
+    params: {report_sec: 30}       # 30s: thử nhanh thấy báo cáo (ngưỡng nghiệp vụ, sửa tuỳ khu)
     version: 1
   - zone_id: z-test-park1-all
     cam_id: test-park1

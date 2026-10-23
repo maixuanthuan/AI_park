@@ -17,7 +17,6 @@ Kiến trúc chung: `docs/KIEN_TRUC.md` (Project "AI in town park").
 | `meta.py`, `zones.py`, `counter.py`, `config.py`, `events.py` | | logic thuần, không cần GPU |
 | `../common/` | | dùng chung với camera_tamper: kiểm config, che mật khẩu |
 | `models/` | | ONNX, labels, script xuất ONNX; engine là cache (không commit) |
-| `ds/` | | bản thử cũ (`ds_count.py`), giữ để so số, sẽ bỏ |
 
 ## Chạy (máy robo, từ thư mục `~/PycharmProjects/AI_park`)
 ```bash

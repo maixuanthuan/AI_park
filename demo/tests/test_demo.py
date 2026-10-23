@@ -272,3 +272,51 @@ def test_m15_canh_bao_kem_anh_bang_chung(tmp_path):
     assert row["events"] == {"phong_ue:alert_start": 1} and len(evs) == 1
     snap = evs[0]["evidence"]["snapshot"]
     assert snap and os.path.isfile(snap) and cv2.imread(snap).shape == (180, 320, 3)
+
+
+# ---------- --demo: data/<chức năng>/ ----------
+def test_m16_demo_quet_thu_muc_theo_chuc_nang(tmp_path):
+    """Tình huống thật: khách gửi video mới -> kéo vào data/<chức năng>/ (có thể chia co/ khong/), chạy `--demo` không sửa
+    lệnh; camera thật khai trong camera.txt; có file ghi chú lẫn vào; thư mục tạo sẵn còn trống chờ video.
+    Giả lập: count+crowd/ (2 video), phong_ue/co/ + phong_ue/khong/ + camera.txt (có dòng trống / chú thích), ghi chú .txt,
+    bang_ron/ trống.
+    Đỏ thì hỏng gì: video mới không được chạy / chạy sai chức năng; ghi chú bị coi là nguồn; thư mục trống chặn cả buổi demo.
+    """
+    from run_demo import scan_demo
+    for p in ["count+crowd/sang.mp4", "count+crowd/chieu.MKV", "phong_ue/co/cho.mp4", "phong_ue/khong/cho_di.mp4",
+              "phong_ue/ghi_chu.txt"]:
+        (tmp_path / p).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / p).write_bytes(b"x")
+    (tmp_path / "phong_ue/camera.txt").write_text("# camera bãi cỏ\nCAM_BAI_CO\n\n")
+    (tmp_path / "bang_ron").mkdir()
+    out, errors, skipped = scan_demo(str(tmp_path))
+    assert errors == [] and skipped == ["bang_ron"]
+    assert out == [f"{tmp_path}/count+crowd/chieu.MKV=count,crowd", f"{tmp_path}/count+crowd/sang.mp4=count,crowd",
+                   f"{tmp_path}/phong_ue/co/cho.mp4=phong_ue", f"{tmp_path}/phong_ue/khong/cho_di.mp4=phong_ue",
+                   "CAM_BAI_CO=phong_ue"]
+    sources, errors = parse_sources(out, {"CAM_BAI_CO": "rtsp://u:p@1.2.3.4/x"})
+    assert errors == [] and [(n, fns) for n, _, _, fns in sources] == [
+        ("chieu", ["count", "crowd"]), ("sang", ["count", "crowd"]), ("cho", ["phong_ue"]), ("cho_di", ["phong_ue"]),
+        ("CAM_BAI_CO", ["phong_ue"])]
+
+
+def test_m17_demo_sai_thi_bao_ro_khong_chay(tmp_path):
+    """Tình huống thật: gõ nhầm tên thư mục (phong-ue), camera.txt ghi tên biến chưa khai trong .env, chưa tạo data/,
+    data/ chỉ toàn thư mục trống, hoặc gõ lệnh không có nguồn nào.
+    Giả lập: các thư mục như trên trong thư mục tạm; main() với --demo-dir trỏ vào đó.
+    Đỏ thì hỏng gì: chạy thiếu nguồn mà không biết, hoặc lỗi Python khó hiểu ngay trước buổi demo.
+    """
+    from run_demo import main, scan_demo
+    (tmp_path / "phong-ue").mkdir()
+    (tmp_path / "phong-ue/a.mp4").write_bytes(b"x")
+    (tmp_path / "crowd").mkdir()
+    (tmp_path / "crowd/camera.txt").write_text("CAM_CHUA_KHAI\n")
+    out, errors, _ = scan_demo(str(tmp_path))
+    assert errors == []
+    _, errors = parse_sources(out, {})
+    assert any("phong-ue" in e for e in errors) and any("CAM_CHUA_KHAI" in e for e in errors)
+    assert scan_demo(str(tmp_path / "khong_co"))[1][0].startswith("chưa có thư mục")
+    (tmp_path / "rong" / "count").mkdir(parents=True)
+    assert "chưa có video / camera nào" in scan_demo(str(tmp_path / "rong"))[1][0]
+    assert main(["--demo", "--demo-dir", str(tmp_path)]) == 2      # có lỗi -> không chạy, mã 2, chưa nạp model
+    assert main([]) == 2                                           # không nguồn, không --demo

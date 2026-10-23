@@ -33,17 +33,19 @@ thấy **kết quả khả thi**. Không phải sản phẩm.
 | `phong_ue` | DeepLabCut SuperAnimal-Quadruped (detector + 39 keypoint), từng frame (`demo/dlc_pose.py`) | động vật **ngồi xổm**: hông / thân < `--squat-ratio` 0.56 quá nửa `--squat-hold` 3 s (`demo/phong_ue.py`) | chạy đúng khi con vật đủ to, nhìn ngang (clip 2: báo 18.9-22.5 s, đáp án 16-22 s); con vật nhỏ không bắt được |
 
 - Mọi `alert_start` kèm **ảnh bằng chứng** `demo/out/<giờ>/bang_chung/*.jpg` (frame đã vẽ), đường dẫn ở `evidence.snapshot`.
+- **`--demo`** (2026-10-23): quét `data/<chức năng>[+<chức năng>]/` (kể cả thư mục con `co/`, `khong/`), mọi video + tên biến
+  camera trong `camera.txt` -> chạy, không sửa lệnh; thư mục trống bỏ qua. Video mới chỉ cần kéo vào đúng thư mục.
 - `--show`: xem trực tiếp lúc chạy (`q` sang nguồn tiếp). Overlay `phong_ue`: C (cổ), D (gốc đuôi), P (chân sau), thanh hông
   đứng + vạch ngưỡng (chân qua vạch = đứng / chưa tới = ngồi xổm), dòng trên cùng % ngồi xổm trong cửa sổ.
 - `dataset/`: `classes.yaml` (13 lớp, danh sách DUY NHẤT cho model chung) + `nhan_dien.py` (thử nhận diện + nhãn tự động YOLO cho CVAT).
-- Test (không cần GPU / model): `demo/tests` 15, `dataset/tests` 4, `people_count/tests` 64, `camera_tamper/tests` 57.
+- Test (không cần GPU / model): `demo/tests` 17, `dataset/tests` 4, `people_count/tests` 64, `camera_tamper/tests` 57.
 - Env **`dlc`** chạy được MỌI chức năng (thay `yoloe`; `yoloe` vẫn chạy được trừ `phong_ue`).
 - Git: nhánh `poc-overlay` (chưa gộp main). Đã push: lan_chiem tách ngưỡng (`21cb4ae`), phong_ue v13. **v14b (nhãn animal, ảnh bằng
   chứng, overlay mới, `/data/`) kiểm đã commit chưa** (`git status --short`).
 
 ## Phiên tới làm gì
-1. Chuyển clip còn ở home vào project: `~/bang_ron` -> `data/bang_ron`, `~/via_he` -> `data/via_he` (lệnh ở PHẦN 2 đã dùng
-   đường dẫn mới). Commit v14b + CONTEXT này nếu chưa; mở PR `poc-overlay -> main`, Thuận tự duyệt + gộp.
+1. `data/` đúng một kiểu `data/<chức năng>/` (đã dọn 2026-10-23: bỏ `data/demo/`, `data/via_he` -> `data/lan_chiem`).
+   Commit v14b-v17 nếu chưa; mở PR `poc-overlay -> main`, Thuận tự duyệt + gộp.
 2. Thuận chọn: luật **biểu tình** (đông người + băng rôn cùng lúc) / **lan_chiem trên camera văn phòng** (kê ghế, dựng xe vài phút:
    camera cố định thật, gần như miễn phí) / quy trình sửa nhãn **CVAT** cho model chung.
 
@@ -52,6 +54,7 @@ thấy **kết quả khả thi**. Không phải sản phẩm.
 |---|---|
 | PoC bằng Python thuần (ultralytics, DeepLabCut), không DeepStream | khách chỉ cần thấy kết quả; logic tách khỏi perception nên dùng lại nguyên khi lên DeepStream |
 | Demo theo `nguồn=chức năng` | thực tế mỗi camera chỉ làm chức năng của khu vực nó |
+| `--demo`: thư mục `data/<chức năng>/` = chức năng, không đặt tên file cố định; thư mục trống bỏ qua | video mới chỉ cần kéo vào thư mục, bao nhiêu file cũng được, không gõ lại lệnh; kiểm vẫn qua `parse_sources` (một chỗ) |
 | Một nguồn sai thì không chạy gì, báo đủ lỗi một lượt | gõ nhầm đường dẫn trước buổi demo phải biết ngay, không chạy xong mới thấy thiếu nguồn |
 | "Quá nửa thời gian trong cửa sổ" cho crowd / bang_ron / lan_chiem / phong_ue | model nhận chập chờn (người 8-10-7; băng rôn 38% thời gian, liên tục dài nhất 4 s); luật "liên tục" không bao giờ báo |
 | Hết cảnh báo chỉ xét dữ liệu SAU lúc báo (crowd, bang_ron, phong_ue) | demo park1: báo rồi tắt sau 3.7 s vì cửa sổ "hết" còn số thấp trước lúc báo (test D10) |
@@ -99,10 +102,11 @@ thấy **kết quả khả thi**. Không phải sản phẩm.
 ## Lệnh
 ```bash
 cd ~/PycharmProjects/AI_park && conda activate dlc
-python demo/run_demo.py people_count/videos/park1.mp4=count,crowd data/bang_ron/co/bieutinh.mp4=bang_ron data/via_he/via_he.mp4=lan_chiem --dwell 30
+python demo/run_demo.py --demo --show                  # mọi thứ trong data/<chức năng>/ (cách nhanh nhất)
+python demo/run_demo.py people_count/videos/park1.mp4=count,crowd data/bang_ron/co/bieutinh.mp4=bang_ron data/lan_chiem/via_he.mp4=lan_chiem --dwell 30
 python demo/run_demo.py data/phong_ue/co/dogpoop2.mp4=phong_ue --show
 python demo/run_demo.py CAM_01_URL=count,crowd --sec 120 --show        # camera: tên biến trong people_count/.env
-python dataset/nhan_dien.py data/via_he --out dataset/out/via_he       # thử nhận diện + nhãn tự động
+python dataset/nhan_dien.py data/lan_chiem --out dataset/out/lan_chiem       # thử nhận diện + nhãn tự động
 python -m pytest -q demo/tests && python -m pytest -q dataset/tests && python -m pytest -q people_count/tests
 ```
 - Ra: `demo/out/<giờ>/<nguồn>.avi` + `events.jsonl` + `bang_chung/*.jpg`; `dataset/out/<tên>/ve/*.avi`, `thong_ke.csv`, `yolo/`.
@@ -145,5 +149,5 @@ pip install ultralytics "git+https://github.com/ultralytics/CLIP.git" python-dot
 | `people_count/meta.py` | hợp đồng perception -> logic: `FrameMeta`, `Obj(cls, conf, bbox, track_id, kp=None)`, `Line`, `Text` |
 | `dataset/classes.yaml` | 13 lớp: person, dog, cat, banner, motorcycle, bicycle, car, umbrella, chair, table, vendor_cart, shoulder_pole, stall |
 | `dataset/nhan_dien.py` | thử nhận diện (bảng COCO vs YOLOE) + nhãn tự động YOLO cho CVAT |
-| `people_count/tools/thu_bang_ron.py` | thử khả thi băng rôn theo clip (thư mục `co/`, `khong/`) |
-| `data/<bài>/co`, `khong` | clip thử, trong project, không vào git |
+| `demo/tools/thu_bang_ron.py` | thử khả thi băng rôn theo clip (thư mục `co/`, `khong/`); chuyển từ people_count/tools 2026-10-23 |
+| `data/<chức năng>/` | clip thử (thư mục con tuỳ ý), trong project, không vào git; `--demo` quét thẳng đây |

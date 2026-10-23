@@ -38,7 +38,8 @@ AI_park/
 ## Nguyên tắc chung
 
 - **Video, ảnh, log không vào repo** (xem `.gitignore`): vừa nặng, vừa có thể lộ hình ảnh hiện trường.
-- **Clip thử nằm trong project**: `data/<bài>/` (`.gitignore` chặn `/data/`), không để ở thư mục home.
+- **Clip thử nằm trong project**: `data/<chức năng>/` (`.gitignore` chặn `/data/`), không để ở thư mục home;
+  `python demo/run_demo.py --demo` chạy hết.
 - Đọc camera bằng **ffmpeg, giải mã trên GPU (NVDEC)** để tiết kiệm CPU khi chạy nhiều camera.
 - Mỗi bài toán ghi rõ quyết định thiết kế **kèm lý do và số đo** trong `CONTEXT.md` của nó.
 

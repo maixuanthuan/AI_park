@@ -1,7 +1,12 @@
 """DEMO / PoC: đưa video hoặc camera vào, mỗi nguồn gán chức năng riêng, ra video đã vẽ + file event. KHÔNG phải sản phẩm.
 
-  conda activate yoloe
+  conda activate dlc
+  python demo/run_demo.py --demo --show          # NHANH NHẤT: chạy mọi thứ trong data/ (xem dưới), không sửa lệnh
   python demo/run_demo.py people_count/videos/park1.mp4=crowd duong.mp4=count CAM_01_URL=count,crowd clip.mp4=bang_ron
+
+--demo: quét data/<chức năng>[+<chức năng>]/ (vd data/count+crowd/, data/phong_ue/co/, data/phong_ue/khong/):
+  mọi video trong thư mục (kể cả thư mục con) chạy chức năng = tên thư mục; thư mục trống bỏ qua; camera.txt (tuỳ chọn)
+  ghi TÊN biến camera trong people_count/.env, mỗi dòng 1 tên (dòng trống / # bỏ qua). Video mới chỉ cần kéo vào đúng thư mục.
 
 Mỗi đối số `nguồn=chức năng[,chức năng]`:
   nguồn     đường dẫn file video, hoặc TÊN biến camera trong people_count/.env (link có mật khẩu không gõ ra lệnh)
@@ -52,6 +57,8 @@ BANNER_PROMPTS = ["banner", "protest sign", "placard"]
 FULL = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
 COLORS = {"zone": (0, 215, 255), "info": (255, 255, 255), "alert": (60, 60, 255)}   # BGR
 MODELS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
+DEMO_DIR = os.path.join(ROOT, "data")  # clip thử của mọi bài: data/<chức năng>/, .gitignore chặn
+VIDEO = (".mp4", ".mkv", ".avi", ".mov", ".webm")
 
 
 def parse_sources(args, env):
@@ -75,6 +82,32 @@ def parse_sources(args, env):
     names = [n for n, *_ in out]
     errors += [f"'{n}': hai nguồn trùng tên (đổi tên file)" for n in sorted(set(names)) if names.count(n) > 1]
     return out, errors
+
+
+def scan_demo(root):
+    """data/<chức năng>[+<chức năng>]/ (thư mục con tuỳ ý: co/, khong/...) -> (['video=chức năng,...', 'TÊN_BIẾN=...'], [lỗi], [bỏ qua]).
+    Thư mục trống: bỏ qua (thư mục tạo sẵn chờ video là chuyện thường). Chỉ đổi thư mục thành đối số `nguồn=chức năng`;
+    kiểm tên chức năng / file / biến camera vẫn do parse_sources làm (một chỗ)."""
+    if not os.path.isdir(root):
+        return [], [f"chưa có thư mục {root}: tạo {root}/<chức năng>/ (vd count+crowd, phong_ue) rồi bỏ video vào"], []
+    out, errors, skipped = [], [], []
+    for d in sorted(os.listdir(root)):
+        folder = os.path.join(root, d)
+        if not os.path.isdir(folder) or d.startswith("."):
+            continue
+        fns, n = d.replace("+", ","), len(out)
+        for cur, dirs, files in os.walk(folder):
+            dirs[:] = sorted(x for x in dirs if not x.startswith("."))
+            out += [f"{os.path.join(cur, f)}={fns}" for f in sorted(files) if f.lower().endswith(VIDEO)]
+        cam = os.path.join(folder, "camera.txt")
+        if os.path.isfile(cam):
+            with open(cam) as fh:
+                out += [f"{x}={fns}" for x in (line.strip() for line in fh) if x and not x.startswith("#")]
+        if len(out) == n:
+            skipped.append(d)
+    if not out:
+        errors.append(f"{root}: chưa có video / camera nào (bỏ video vào {root}/<chức năng>/, vd {root}/phong_ue/)")
+    return out, errors, skipped
 
 
 def to_objs(xyxy, cls, conf, names, w, h):
@@ -239,7 +272,9 @@ def emit(ev, events_out, counts, snap=None):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("sources", nargs="+", help="nguồn=chức năng[,chức năng]")
+    ap.add_argument("sources", nargs="*", help="nguồn=chức năng[,chức năng]")
+    ap.add_argument("--demo", action="store_true", help="chạy mọi video / camera trong data/<chức năng>/ (xem đầu file)")
+    ap.add_argument("--demo-dir", default=DEMO_DIR, help=argparse.SUPPRESS)  # test truyền thư mục tạm
     ap.add_argument("--min-people", type=int, default=5, help="crowd: từ bấy nhiêu người là đông (ngưỡng demo)")
     ap.add_argument("--hold", type=float, default=10, help="crowd / bang_ron: giữ bấy nhiêu giây mới báo / mới hết")
     ap.add_argument("--report-sec", type=float, default=30, help="count: mỗi bấy nhiêu giây 1 báo cáo")
@@ -256,11 +291,18 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     load_dotenv(os.path.join(ROOT, "people_count", ".env"))
-    sources, errors = parse_sources(args.sources, os.environ)
+    raw, errors, skipped = scan_demo(args.demo_dir) if args.demo else ([], [], [])
+    if skipped:
+        print(f"bỏ qua thư mục trống: {', '.join(skipped)}")
+    if not args.sources and not args.demo:
+        errors.append("chưa có nguồn: gõ nguồn=chức năng, hoặc --demo để chạy data/")
+    sources, more = parse_sources(args.sources + raw, os.environ)
+    errors += more
     if errors:
         print("LỖI, không chạy:\n  " + "\n  ".join(errors), file=sys.stderr)
         return 2
 
+    print("== Sẽ chạy:\n" + "\n".join(f"  {n:<28} {', '.join(fns)}" for n, _, _, fns in sources))
     # nạp muộn: sai đối số thì báo ngay, không chờ nạp torch; chỉ nạp thư viện của chức năng có dùng
     os.makedirs(MODELS, exist_ok=True)
     models = {}

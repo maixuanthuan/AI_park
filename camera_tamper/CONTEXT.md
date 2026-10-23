@@ -104,3 +104,6 @@ Chuyển sang bài toán tiếp theo (đếm người / vật nuôi). Việc cò
 7. Ảnh "trước" làm bằng chứng (1 frame bình thường cuối cùng).
 8. Điều tra `LD_LIBRARY_PATH` của deepcv (gốc của cảnh báo libtinfo và lỗi ssh).
 9. Về lâu dài: một lớp đọc camera dùng chung cho mọi bài toán (giải mã 1 lần, chia frame).
+10. **Test chập chờn chưa rõ** (2026-10-23): 1 lần đỏ / ~25 lần chạy bộ 57 test trên máy Claude (2 nhân), không bắt được tên test;
+    chạy lại 12 lần thường + 6 lần CPU bận (test chậm x2): xanh hết. Code camera_tamper không đổi từ 2026-10-16. Nghi một test
+    phụ thuộc thời gian thật (thread / subprocess). Gặp lại: `python -m pytest -q camera_tamper/tests -x` rồi ghi TÊN test đỏ.

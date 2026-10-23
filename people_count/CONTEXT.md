@@ -55,7 +55,6 @@ Theo `demo/CONTEXT.md` (PoC). Engine này chỉ quay lại khi lên DeepStream /
 | `config.py` | kiểm cameras / zones / profile, mọi lỗi một lượt; `PROFILES` = module mỗi profile đã có |
 | `events.py` | envelope event bản 0.1 |
 | `Dockerfile` | `aipark-overview:7.0` = DeepStream 7.0 + pyds 1.1.11 + parser DeepStream-Yolo build trong image |
-| `ds/` | bản thử cũ (`ds_count.py`, config cũ, `nvdsanalytics`): giữ để so số, bỏ khi engine mới chạy đúng |
 | `models/` | `yolo26n.pt/.onnx`, `labels.txt`, `export_yolo26.py`, engine `model_b<N>_gpu0_fp16.engine` (không commit) |
 
 ## Thuật toán đếm
@@ -226,7 +225,7 @@ Dự đoán A1 của Thuận (ghi trước khi đo): nvurisrcbin ~4 khối (đ�
 2. **Thí nghiệm giải mã** (khi biết thông số luồng camera thật) (nút cổ chai đã đo): cùng nội dung 1080p vs 360p -> FPS, `dec%`. Đòn bẩy giải mã là
    **độ phân giải / fps của luồng camera** (môi trường, config), KHÔNG phải bỏ frame ở model: bỏ frame ở nvinfer
    không giảm giải mã (H.264/H.265 phải giải mã mọi frame vì frame sau dựa vào frame trước). Đáng thử thêm: giải mã chỉ keyframe (cần kiểm property).
-3. So trung vị / max với `ds_count.py` cùng video (person phải giống; dog có thể thấp hơn do sửa lỗi trung vị).
+3. (Bỏ 2026-10-23: đã xoá bản thử `ds/` vì engine mới chạy đúng; lỗi trung vị của bản thử khoá bằng test C2.)
 4. Đo CPU / FPS tracker bật vs tắt (CPU không phải nút cổ chai -> ưu tiên thấp).
 5. RTSP camera văn phòng: rút dây xem log mất kết nối / có hình lại, đo thời gian kết nối lại.
 6. Công cụ đo độ chính xác: clip + đếm tay -> MAE. Dùng khi có camera thật.

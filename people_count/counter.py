@@ -12,7 +12,7 @@ from zones import anchor, contains
 
 class _Window:
     """Cửa sổ của một vùng: số đếm từng frame theo lớp. Mọi lớp đều được ghi ở MỌI frame (0 nếu không thấy):
-    bản thử ds_count.py chỉ ghi lớp từ lúc nó xuất hiện -> lớp hiếm bị trung vị cao hơn thật (chứng minh 2026-10-19)."""
+    bản thử ds_count.py (đã xoá 2026-10-23) chỉ ghi lớp từ lúc nó xuất hiện -> lớp hiếm bị trung vị cao hơn thật (chứng minh 2026-10-19)."""
 
     def __init__(self, classes):
         self.classes = classes
